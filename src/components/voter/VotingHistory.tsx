@@ -10,12 +10,23 @@ import {
   TableRow,
   TableCell,
   CircularProgress,
-  Chip,
 } from "@mui/material";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+  DocumentReference,
+} from "firebase/firestore";
 import { auth, db } from "../../firebase/config";
-import { doc } from "firebase/firestore";
-import { getDoc } from "firebase/firestore";
+
+interface VoteData {
+  pollId: string | DocumentReference | number;
+  candidateId: string | DocumentReference | number;
+  timestamp: { toDate(): Date };
+}
 
 interface VoteRecord {
   id: string;
@@ -33,7 +44,11 @@ const VotingHistory: React.FC = () => {
 
   useEffect(() => {
     const fetchVoteHistory = async () => {
-      if (!auth.currentUser) return;
+      if (!auth.currentUser) {
+        setError("You must be signed in to view your voting history.");
+        setLoading(false);
+        return;
+      }
 
       setLoading(true);
       try {
@@ -42,31 +57,52 @@ const VotingHistory: React.FC = () => {
           votesRef,
           where("userId", "==", auth.currentUser.uid)
         );
-
-        const querySnapshot = await getDocs(voteQuery);
+        const snapshot = await getDocs(voteQuery);
         const records: VoteRecord[] = [];
 
-        for (const voteDoc of querySnapshot.docs) {
-          const voteData = voteDoc.data();
+        for (const voteDoc of snapshot.docs) {
+          const data = voteDoc.data() as VoteData;
 
-          // Get poll details
-          const pollDoc = await getDoc(doc(db, "polls", voteData.pollId));
-          const pollData = pollDoc.data();
+          // Determine poll reference (handle string, number, or DocumentReference)
+          let pollRef: DocumentReference;
+          if (
+            typeof data.pollId === "string" ||
+            typeof data.pollId === "number"
+          ) {
+            pollRef = doc(db, "polls", String(data.pollId));
+          } else {
+            pollRef = data.pollId;
+          }
 
-          // Get candidate details
-          const candidateDoc = await getDoc(
-            doc(db, "candidates", voteData.candidateId)
-          );
-          const candidateData = candidateDoc.data();
+          // Determine candidate reference
+          let candidateRef: DocumentReference;
+          if (
+            typeof data.candidateId === "string" ||
+            typeof data.candidateId === "number"
+          ) {
+            candidateRef = doc(db, "candidates", String(data.candidateId));
+          } else {
+            candidateRef = data.candidateId;
+          }
+
+          // Fetch poll and candidate details in parallel
+          const [pollSnap, candidateSnap] = await Promise.all([
+            getDoc(pollRef),
+            getDoc(candidateRef),
+          ]);
+          const pollData = pollSnap.data();
+          const candidateData = candidateSnap.data();
 
           records.push({
             id: voteDoc.id,
-            pollId: voteData.pollId,
-            pollTitle: pollData?.title || "Unknown Poll",
-            candidateId: voteData.candidateId,
-            candidateName: candidateData?.name || "Unknown Candidate",
-            timestamp: voteData.timestamp.toDate(),
+            pollId: pollRef.id,
+            pollTitle: pollData?.title ?? "Unknown Poll",
+            candidateId: candidateRef.id,
+            candidateName: candidateData?.name ?? "Unknown Candidate",
+            timestamp: data.timestamp.toDate(),
           });
+          console.log("Polldata", pollData);
+          console.log("Candidatedata", candidateData);
         }
 
         // Sort by most recent first
@@ -83,15 +119,14 @@ const VotingHistory: React.FC = () => {
     fetchVoteHistory();
   }, []);
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("en-US", {
+  const formatDate = (date: Date) =>
+    new Intl.DateTimeFormat("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
-  };
 
   if (loading) {
     return (
@@ -132,7 +167,7 @@ const VotingHistory: React.FC = () => {
           <TableHead>
             <TableRow>
               <TableCell>Poll</TableCell>
-              <TableCell>Vote Cast For</TableCell>
+              {/* <TableCell>Vote Cast For</TableCell> */}
               <TableCell>Date</TableCell>
             </TableRow>
           </TableHead>
@@ -140,7 +175,7 @@ const VotingHistory: React.FC = () => {
             {voteHistory.map((record) => (
               <TableRow key={record.id}>
                 <TableCell>{record.pollTitle}</TableCell>
-                <TableCell>{record.candidateName}</TableCell>
+                {/* <TableCell>{record.candidateName}</TableCell> */}
                 <TableCell>{formatDate(record.timestamp)}</TableCell>
               </TableRow>
             ))}
@@ -150,4 +185,5 @@ const VotingHistory: React.FC = () => {
     </Box>
   );
 };
+
 export default VotingHistory;

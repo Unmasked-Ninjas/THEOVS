@@ -66,6 +66,8 @@ const PollResults: React.FC = () => {
 
         setPoll({ id: pollDoc.id, ...pollDoc.data() } as Poll);
         setLoading(false);
+        console.log("Polldoc", pollDoc);
+        console.log("PollId", pollId);
       } catch (error) {
         console.error("Error fetching poll data:", error);
         setError("Failed to load poll results");
@@ -108,6 +110,7 @@ const PollResults: React.FC = () => {
     );
   }
 
+  console.log("Poll", poll);
   // Calculate results for visualization
   const resultsData = poll.candidates.map((candidate, index) => {
     const voteCount = candidate.votes || 0;

@@ -10,9 +10,14 @@ import {
   CardContent,
   Alert,
   Link,
+  Divider,
+  CircularProgress,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import {
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 import { auth } from "../../firebase/config";
 
 const AdminLogin: React.FC = () => {
@@ -20,11 +25,13 @@ const AdminLogin: React.FC = () => {
   const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [resetSent, setResetSent] = useState<boolean>(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setResetSent(false);
 
     if (!email || !password) {
       setError("Please enter both email and password");
@@ -37,9 +44,39 @@ const AdminLogin: React.FC = () => {
       navigate("/admin/dashboard");
     } catch (err: any) {
       console.error("Login error:", err);
-      setError(
-        err.message || "Failed to login. Please check your credentials."
-      );
+      if (
+        err.code === "auth/user-not-found" ||
+        err.code === "auth/wrong-password"
+      ) {
+        setError("Invalid email or password");
+      } else {
+        setError(
+          err.message || "Failed to login. Please check your credentials."
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError("Please enter your email address");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetSent(true);
+      setError(null);
+    } catch (err: any) {
+      console.error("Password reset error:", err);
+      if (err.code === "auth/user-not-found") {
+        setError("No account found with this email");
+      } else {
+        setError("Failed to send password reset email");
+      }
     } finally {
       setLoading(false);
     }
@@ -57,6 +94,12 @@ const AdminLogin: React.FC = () => {
             {error && (
               <Alert severity="error" sx={{ mb: 3 }}>
                 {error}
+              </Alert>
+            )}
+
+            {resetSent && (
+              <Alert severity="success" sx={{ mb: 3 }}>
+                Password reset link has been sent to your email
               </Alert>
             )}
 
@@ -91,13 +134,25 @@ const AdminLogin: React.FC = () => {
                     size="large"
                     disabled={loading}
                   >
-                    {loading ? "Logging in..." : "Login"}
+                    {loading ? <CircularProgress size={24} /> : "Login"}
                   </Button>
                 </Grid>
               </Grid>
             </form>
 
-            <Box mt={3} textAlign="center">
+            <Box sx={{ textAlign: "center", mt: 2, mb: 2 }}>
+              <Button
+                color="primary"
+                onClick={handleForgotPassword}
+                disabled={loading}
+              >
+                Forgot password?
+              </Button>
+            </Box>
+
+            <Divider sx={{ my: 2 }} />
+
+            <Box mt={1} textAlign="center">
               <Link href="/admin/register" variant="body2">
                 Don't have an account? Register
               </Link>
