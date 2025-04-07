@@ -37,6 +37,17 @@ const PollList: React.FC<PollListProps> = ({ polls }) => {
     }).format(date);
   };
 
+  const getPollStatus = (startDate: Date, endDate: Date) => {
+    const now = new Date();
+    if (now < startDate) {
+      return { label: "Upcoming", color: "info" };
+    } else if (now <= endDate) {
+      return { label: "Active", color: "success" };
+    } else {
+      return { label: "Ended", color: "error" };
+    }
+  };
+
   const isCurrentlyActive = (startDate: Date, endDate: Date) => {
     const now = new Date();
     return startDate <= now && endDate >= now;
@@ -65,84 +76,86 @@ const PollList: React.FC<PollListProps> = ({ polls }) => {
         Available Polls
       </Typography>
       <Grid container spacing={3}>
-        {polls.map((poll) => (
-          <Grid item xs={12} sm={6} md={4} key={poll.id}>
-            <Card
-              sx={{ height: "100%", display: "flex", flexDirection: "column" }}
-            >
-              <CardContent sx={{ flexGrow: 1 }}>
-                <Typography variant="h6" component="div" gutterBottom>
-                  {poll.title}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 2 }}
-                >
-                  {poll.description}
-                </Typography>
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    mb: 1,
-                  }}
-                >
-                  <Typography variant="caption" color="text.secondary">
-                    Starts:
+        {polls.map((poll) => {
+          const status = getPollStatus(poll.startDate, poll.endDate);
+
+          return (
+            <Grid item xs={12} sm={6} md={4} key={poll.id}>
+              <Card
+                sx={{
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <CardContent sx={{ flexGrow: 1 }}>
+                  <Typography variant="h6" component="div" gutterBottom>
+                    {poll.title}
                   </Typography>
-                  <Typography variant="body2">
-                    {formatDate(poll.startDate)}
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 2 }}
+                  >
+                    {poll.description}
                   </Typography>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      mb: 1,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Starts:
+                    </Typography>
+                    <Typography variant="body2">
+                      {formatDate(poll.startDate)}
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Ends:
+                    </Typography>
+                    <Typography variant="body2">
+                      {formatDate(poll.endDate)}
+                    </Typography>
+                  </Box>
+                </CardContent>
+                <Box sx={{ p: 2, pt: 0 }}>
+                  <Chip
+                    label={status.label}
+                    color={status.color as "success" | "info" | "error"}
+                    size="small"
+                    sx={{ mb: 1 }}
+                  />
                 </Box>
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <Typography variant="caption" color="text.secondary">
-                    Ends:
-                  </Typography>
-                  <Typography variant="body2">
-                    {formatDate(poll.endDate)}
-                  </Typography>
-                </Box>
-              </CardContent>
-              <Box sx={{ p: 2, pt: 0 }}>
-                <Chip
-                  label={
-                    isCurrentlyActive(poll.startDate, poll.endDate)
-                      ? "Active"
-                      : "Upcoming"
-                  }
-                  color={
-                    isCurrentlyActive(poll.startDate, poll.endDate)
-                      ? "success"
-                      : "info"
-                  }
-                  size="small"
-                  sx={{ mb: 1 }}
-                />
-              </Box>
-              <CardActions>
-                <Button
-                  size="small"
-                  variant="contained"
-                  fullWidth
-                  onClick={() => handleVoteClick(poll.id)}
-                  disabled={!isCurrentlyActive(poll.startDate, poll.endDate)}
-                >
-                  {isCurrentlyActive(poll.startDate, poll.endDate)
-                    ? "Vote Now"
-                    : "View Details"}
-                </Button>
-              </CardActions>
-            </Card>
-          </Grid>
-        ))}
+                <CardActions>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    fullWidth
+                    onClick={() => handleVoteClick(poll.id)}
+                    disabled={!isCurrentlyActive(poll.startDate, poll.endDate)}
+                  >
+                    {isCurrentlyActive(poll.startDate, poll.endDate)
+                      ? "Vote Now"
+                      : status.label === "Ended"
+                      ? "View Results"
+                      : "View Details"}
+                  </Button>
+                </CardActions>
+              </Card>
+            </Grid>
+          );
+        })}
       </Grid>
     </Box>
   );
