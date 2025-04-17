@@ -10,6 +10,10 @@ import {
   CircularProgress,
   Alert,
   Divider,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import {
   signInWithEmailAndPassword,
@@ -20,19 +24,32 @@ import { auth, db } from "../../firebase/config";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
+const colleges: Record<string, string> = {
+  "Herald College Kathmandu": "@heraldcollege.edu.np",
+  "Islington College": "@islingtoncollege.edu.np",
+  "Biratnagar International College": "@bicnepal.edu.np",
+  "Informatics College Pokhara": "@icp.edu.np",
+  "Fishtail Mountain College": "@fishtailmountain.edu.np",
+  "Itahari International College": "@icc.edu.np",
+  "Apex College": "@apexcollege.edu.np",
+  "International School of Tourism and Hotel Management (IST)":
+    "@istcollege.edu.np",
+  "CG Institute of Management": "@cgim.edu.np",
+};
+
 const VoterLogin: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
+  const [college, setCollege] = useState<keyof typeof colleges | "">("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resetSent, setResetSent] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is already logged in
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
         navigate("/voter/login");
@@ -42,39 +59,53 @@ const VoterLogin: React.FC = () => {
     return () => unsubscribe();
   }, [navigate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-
+  const validateForm = (): boolean => {
     if (!email || !password) {
       setError("Email and password are required");
-      return;
+      return false;
+    }
+
+    if (!isLogin && !college) {
+      setError("College is required");
+      return false;
+    }
+
+    if (!isLogin && !email.endsWith(colleges[college])) {
+      setError(`Email must end with ${colleges[college]}`);
+      return false;
     }
 
     if (!isLogin && password !== confirmPassword) {
       setError("Passwords do not match");
-      return;
+      return false;
     }
+
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (!validateForm()) return;
 
     setLoading(true);
     try {
       if (isLogin) {
-        // Login user
         await signInWithEmailAndPassword(auth, email, password);
         navigate("/voter");
       } else {
-        // Register new user
         const userCredential = await createUserWithEmailAndPassword(
           auth,
           email,
           password
         );
 
-        // Create user profile in Firestore
         await setDoc(doc(db, "users", userCredential.user.uid), {
           name,
           email,
-          role: "voter", // Ensure the role is set correctly
+          college,
+          role: "voter",
           createdAt: serverTimestamp(),
         });
 
@@ -154,16 +185,18 @@ const VoterLogin: React.FC = () => {
           <form onSubmit={handleSubmit}>
             <Grid container spacing={2}>
               {!isLogin && (
-                <Grid item xs={12}>
-                  <TextField
-                    label="Full Name"
-                    variant="outlined"
-                    fullWidth
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required={!isLogin}
-                  />
-                </Grid>
+                <>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Full Name"
+                      variant="outlined"
+                      fullWidth
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required={!isLogin}
+                    />
+                  </Grid>
+                </>
               )}
 
               <Grid item xs={12}>
@@ -175,8 +208,35 @@ const VoterLogin: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  helperText={college && `Email must end with ${colleges[college]}`}
+                  sx={{ mb: college ? 2 : 0 }} // Add space dynamically when helper text is shown
                 />
               </Grid>
+
+              {!isLogin && (
+                <Grid item xs={12}>
+                  <FormControl fullWidth required>
+                    <InputLabel
+                      sx={{
+                        backgroundColor: "white",
+                        px: 0.5,
+                      }}
+                    >
+                      Choose Your College
+                    </InputLabel>
+                    <Select
+                      value={college}
+                      onChange={(e) => setCollege(e.target.value)}
+                    >
+                      {Object.keys(colleges).map((collegeName) => (
+                        <MenuItem key={collegeName} value={collegeName}>
+                          {collegeName}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
 
               <Grid item xs={12}>
                 <TextField

@@ -10,17 +10,35 @@ import {
   Alert,
   Grid,
   Link,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { auth, db } from "../../firebase/config";
 import { doc, setDoc } from "firebase/firestore";
 
+const colleges: Record<string, string> = {
+  "Herald College Kathmandu": "@heraldcollege.edu.np",
+  "Islington College": "@islingtoncollege.edu.np",
+  "Biratnagar International College": "@bicnepal.edu.np",
+  "Informatics College Pokhara": "@icp.edu.np",
+  "Fishtail Mountain College": "@fishtailmountain.edu.np",
+  "Itahari International College": "@icc.edu.np",
+  "Apex College": "@apexcollege.edu.np",
+  "International School of Tourism and Hotel Management (IST)":
+    "@istcollege.edu.np",
+  "CG Institute of Management": "@cgim.edu.np",
+};
+
 const AdminRegister: React.FC = () => {
   const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [confirmPassword, setConfirmPassword] = useState<string>("");
+  const [college, setCollege] = useState<keyof typeof colleges | "">("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const navigate = useNavigate();
@@ -33,6 +51,17 @@ const AdminRegister: React.FC = () => {
 
     if (!email.trim()) {
       setError("Email is required");
+      return false;
+    }
+
+    if (!college) {
+      setError("College is required");
+      return false;
+    }
+
+    const emailDomain = colleges[college];
+    if (!email.endsWith(emailDomain)) {
+      setError(`Email must end with ${emailDomain}`);
       return false;
     }
 
@@ -76,6 +105,7 @@ const AdminRegister: React.FC = () => {
         uid: user.uid,
         name,
         email,
+        college,
         role: "admin",
         createdAt: new Date().toISOString(),
       });
@@ -123,7 +153,31 @@ const AdminRegister: React.FC = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    helperText={college && `Email must end with ${colleges[college]}`}
+                    sx={{ mb: college ? 2 : 0 }} // Add space dynamically when helper text is shown
                   />
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControl fullWidth required>
+                    <InputLabel
+                      sx={{
+                        backgroundColor: "white",
+                        px: 0.5,
+                      }}
+                    >
+                      Choose Your College
+                    </InputLabel>
+                    <Select
+                      value={college}
+                      onChange={(e) => setCollege(e.target.value)}
+                    >
+                      {Object.keys(colleges).map((collegeName) => (
+                        <MenuItem key={collegeName} value={collegeName}>
+                          {collegeName}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 </Grid>
                 <Grid item xs={12}>
                   <TextField
@@ -133,7 +187,6 @@ const AdminRegister: React.FC = () => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    helperText="Password must be at least 6 characters"
                   />
                 </Grid>
                 <Grid item xs={12}>
