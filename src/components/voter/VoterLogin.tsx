@@ -74,7 +74,7 @@ const VoterLogin: React.FC = () => {
         await setDoc(doc(db, "users", userCredential.user.uid), {
           name,
           email,
-          role: "voter",
+          role: "voter", // Ensure the role is set correctly
           createdAt: serverTimestamp(),
         });
 
