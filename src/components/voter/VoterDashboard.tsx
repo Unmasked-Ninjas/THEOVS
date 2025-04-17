@@ -10,14 +10,7 @@ import {
   Button,
 } from "@mui/material";
 import { signOut } from "firebase/auth";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../../firebase/config";
 import PollList from "./PollList";
 import PollResults from "../admin/PollResults";
@@ -45,30 +38,47 @@ const VoterDashboard: React.FC = () => {
   const fetchPolls = async () => {
     setLoading(true);
     try {
+      const userId = auth.currentUser?.uid;
+      if (!userId) {
+        setError("User not authenticated");
+        setLoading(false);
+        return;
+      }
+
+      // Retrieve the voter's college name
+      const userDoc = await getDoc(doc(db, "users", userId));
+      const voterCollegeName = userDoc.exists() ? userDoc.data().college : null;
+
+      if (!voterCollegeName) {
+        setError("Failed to retrieve voter college information");
+        setLoading(false);
+        return;
+      }
+
       const pollsRef = collection(db, "polls");
-      // You can add the filter back if needed
-      // const pollQuery = query(pollsRef, where("status", "==", "active"));
       const querySnapshot = await getDocs(pollsRef);
 
       const pollsData: Poll[] = [];
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        pollsData.push({
-          id: doc.id,
-          title: data.title,
-          description: data.description,
-          // Handle both string dates and Firestore timestamps
-          startDate:
-            typeof data.startDate === "string"
-              ? new Date(data.startDate)
-              : data.startDate?.toDate?.() || new Date(),
-          endDate:
-            typeof data.endDate === "string"
-              ? new Date(data.endDate)
-              : data.endDate?.toDate?.() || new Date(),
-          isActive: data.status === "active", // Using the status field from your data
-        });
+        if (data.collegeName === voterCollegeName) {
+          pollsData.push({
+            id: doc.id,
+            title: data.title,
+            description: data.description,
+            // Handle both string dates and Firestore timestamps
+            startDate:
+              typeof data.startDate === "string"
+                ? new Date(data.startDate)
+                : data.startDate?.toDate?.() || new Date(),
+            endDate:
+              typeof data.endDate === "string"
+                ? new Date(data.endDate)
+                : data.endDate?.toDate?.() || new Date(),
+            isActive: data.status === "active", // Using the status field from your data
+          });
+        }
       });
 
       setPolls(pollsData);

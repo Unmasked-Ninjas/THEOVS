@@ -23,7 +23,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { Delete as DeleteIcon, Add as AddIcon } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
 import { db, auth } from "../../firebase/config";
 import { Candidate, PollType } from "../../types/Poll";
 
@@ -122,6 +122,10 @@ const CreatePoll: React.FC = () => {
         return;
       }
 
+      // Fetch the college name from the user database
+      const userDoc = await getDoc(doc(db, "users", userId));
+      const collegeName = userDoc.exists() ? userDoc.data().college : null;
+
       const newPoll = {
         title,
         description,
@@ -134,6 +138,7 @@ const CreatePoll: React.FC = () => {
         createdAt: serverTimestamp(),
         totalVotes: 0,
         status: "active",
+        collegeName, // Add college name to the poll data
       };
 
       await addDoc(collection(db, "polls"), newPoll);
