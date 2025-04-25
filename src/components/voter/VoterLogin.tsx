@@ -97,6 +97,7 @@ const VoterLogin: React.FC = () => {
     }
   };
 
+  // Function to handle password reset for Voter
   const handleForgotPassword = async () => {
     if (!email) {
       setError("Please enter your email address");
