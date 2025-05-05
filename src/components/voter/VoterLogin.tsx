@@ -19,6 +19,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
 } from "firebase/auth";
 import { auth, db } from "../../firebase/config";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -47,6 +48,9 @@ const VoterLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [generatedOtp, setGeneratedOtp] = useState("");
+  const [step, setStep] = useState<"login" | "otp">("login");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -65,22 +69,42 @@ const VoterLogin: React.FC = () => {
       return false;
     }
 
-    if (!isLogin && !college) {
-      setError("College is required");
-      return false;
-    }
+    if (!isLogin) {
+      if (!college) {
+        setError("College is required");
+        return false;
+      }
 
-    if (!isLogin && !email.endsWith(colleges[college])) {
-      setError(`Email must end with ${colleges[college]}`);
-      return false;
-    }
+      if (!email.endsWith(colleges[college])) {
+        setError(`Email must end with ${colleges[college]}`);
+        return false;
+      }
 
-    if (!isLogin && password !== confirmPassword) {
-      setError("Passwords do not match");
-      return false;
+      const passwordRegex = /^(?=.*[A-Z])(?=.*\d+)(?=.*[!@#$%^&*]+)[A-Za-z\d!@#$%^&*]{6,}$/;
+      if (!passwordRegex.test(password)) {
+        setError(
+          "Password must be at least 6 characters long, include at least one capital letter, one number, and one symbol"
+        );
+        return false;
+      }
+
+      if (password !== confirmPassword) {
+        setError("Passwords do not match");
+        return false;
+      }
     }
 
     return true;
+  };
+
+  const generateOtp = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString(); // Generate a 6-digit OTP
+  };
+
+  const sendOtp = async () => {
+    const otp = generateOtp();
+    setGeneratedOtp(otp);
+    console.log(`Generated OTP: ${otp}`); // Log OTP to the console
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,14 +117,17 @@ const VoterLogin: React.FC = () => {
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
-        navigate("/voter");
-      } else {
-        const userCredential = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
 
+        // Generate and send OTP
+        await sendOtp();
+        setStep("otp"); // Move to OTP verification step
+      } else {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
+        // Send verification email
+        await sendEmailVerification(userCredential.user);
+
+        // Store user data in the database
         await setDoc(doc(db, "users", userCredential.user.uid), {
           name,
           email,
@@ -109,7 +136,16 @@ const VoterLogin: React.FC = () => {
           createdAt: serverTimestamp(),
         });
 
-        navigate("/voter");
+        // After registration, switch to login mode
+        setIsLogin(true);
+        setEmail("");
+        setPassword("");
+        setConfirmPassword("");
+        setCollege("");
+        setName("");
+        setResetSent(false); // Clear any previous reset state
+        setError(""); // Clear any error messages
+        setResetSent(true); // Trigger success message
       }
     } catch (err: any) {
       console.error("Authentication error:", err);
@@ -125,6 +161,18 @@ const VoterLogin: React.FC = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOtpVerification = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (otp === generatedOtp) {
+      // OTP verified, redirect to dashboard
+      window.location.href = "/voter";
+    } else {
+      setError("Invalid OTP. Please try again.");
     }
   };
 
@@ -178,111 +226,140 @@ const VoterLogin: React.FC = () => {
 
           {resetSent && (
             <Alert severity="success" sx={{ mb: 3 }}>
-              Password reset link has been sent to your email
+              Registration successful. Please log in.
             </Alert>
           )}
 
-          <form onSubmit={handleSubmit}>
-            <Grid container spacing={2}>
-              {!isLogin && (
-                <>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Full Name"
-                      variant="outlined"
-                      fullWidth
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required={!isLogin}
-                    />
-                  </Grid>
-                </>
-              )}
+          {step === "login" && (
+            <form onSubmit={handleSubmit}>
+              <Grid container spacing={2}>
+                {!isLogin && (
+                  <>
+                    <Grid item xs={12}>
+                      <TextField
+                        label="Full Name"
+                        variant="outlined"
+                        fullWidth
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required={!isLogin}
+                      />
+                    </Grid>
+                  </>
+                )}
 
-              <Grid item xs={12}>
-                <TextField
-                  label="Email Address"
-                  variant="outlined"
-                  type="email"
-                  fullWidth
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  helperText={college && `Email must end with ${colleges[college]}`}
-                  sx={{ mb: college ? 2 : 0 }} // Add space dynamically when helper text is shown
-                />
-              </Grid>
-
-              {!isLogin && (
-                <Grid item xs={12}>
-                  <FormControl fullWidth required>
-                    <InputLabel
-                      sx={{
-                        backgroundColor: "white",
-                        px: 0.5,
-                      }}
-                    >
-                      Choose Your College
-                    </InputLabel>
-                    <Select
-                      value={college}
-                      onChange={(e) => setCollege(e.target.value)}
-                    >
-                      {Object.keys(colleges).map((collegeName) => (
-                        <MenuItem key={collegeName} value={collegeName}>
-                          {collegeName}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              )}
-
-              <Grid item xs={12}>
-                <TextField
-                  label="Password"
-                  variant="outlined"
-                  type="password"
-                  fullWidth
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </Grid>
-
-              {!isLogin && (
                 <Grid item xs={12}>
                   <TextField
-                    label="Confirm Password"
+                    label="Email Address"
+                    variant="outlined"
+                    type="email"
+                    fullWidth
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    helperText={college && `Email must end with ${colleges[college]}`}
+                    sx={{ mb: college ? 2 : 0 }} // Add space dynamically when helper text is shown
+                  />
+                </Grid>
+
+                {!isLogin && (
+                  <Grid item xs={12}>
+                    <FormControl fullWidth required>
+                      <InputLabel
+                        sx={{
+                          backgroundColor: "white",
+                          px: 0.5,
+                        }}
+                      >
+                        Choose Your College
+                      </InputLabel>
+                      <Select
+                        value={college}
+                        onChange={(e) => setCollege(e.target.value)}
+                      >
+                        {Object.keys(colleges).map((collegeName) => (
+                          <MenuItem key={collegeName} value={collegeName}>
+                            {collegeName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                )}
+
+                <Grid item xs={12}>
+                  <TextField
+                    label="Password"
                     variant="outlined"
                     type="password"
                     fullWidth
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required={!isLogin}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
                   />
                 </Grid>
-              )}
-            </Grid>
 
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              fullWidth
-              size="large"
-              disabled={loading}
-              sx={{ mt: 3, mb: 2 }}
-            >
-              {loading ? (
-                <CircularProgress size={24} />
-              ) : isLogin ? (
-                "Sign In"
-              ) : (
-                "Register"
-              )}
-            </Button>
-          </form>
+                {!isLogin && (
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Confirm Password"
+                      variant="outlined"
+                      type="password"
+                      fullWidth
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required={!isLogin}
+                    />
+                  </Grid>
+                )}
+              </Grid>
+
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                fullWidth
+                size="large"
+                disabled={loading}
+                sx={{ mt: 3, mb: 2 }}
+              >
+                {loading ? (
+                  <CircularProgress size={24} />
+                ) : isLogin ? (
+                  "Sign In"
+                ) : (
+                  "Register"
+                )}
+              </Button>
+            </form>
+          )}
+
+          {step === "otp" && (
+            <form onSubmit={handleOtpVerification}>
+              <Typography variant="body1" sx={{ mb: 2 }}>
+                Enter the OTP sent to your email.
+              </Typography>
+              <TextField
+                label="OTP"
+                variant="outlined"
+                type="text"
+                fullWidth
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                required
+                sx={{ mb: 2 }}
+              />
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                fullWidth
+                disabled={loading}
+              >
+                {loading ? <CircularProgress size={24} /> : "Verify OTP"}
+              </Button>
+            </form>
+          )}
 
           {isLogin && (
             <Box sx={{ textAlign: "center", mt: 1, mb: 2 }}>
