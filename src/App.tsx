@@ -23,6 +23,7 @@ import VoterLogin from "./components/voter/VoterLogin";
 import VoterDashboard from "./components/voter/VoterDashboard";
 import VoteBallot from "./components/voter/VoteBallot";
 
+
 // Other components
 import LandingPage from "./components/LandingPage";
 import NotFound from "./components/NotFound";
