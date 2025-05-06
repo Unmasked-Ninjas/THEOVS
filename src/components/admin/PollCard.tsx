@@ -17,7 +17,6 @@ interface PollCardProps {
 
 const PollCard: React.FC<PollCardProps> = ({ poll }) => {
   const navigate = useNavigate();
-  const isActive = new Date() < new Date(poll.endDate);
 
   const handleViewResults = () => {
     navigate(`/admin/poll/${poll.id}/results`);
@@ -25,6 +24,15 @@ const PollCard: React.FC<PollCardProps> = ({ poll }) => {
 
   const handleEditPoll = () => {
     navigate(`/admin/poll/${poll.id}/edit`);
+  };
+
+  const formatDateTime = (date: string | Date) => {
+    const formattedDate = new Date(date).toLocaleDateString();
+    const formattedTime = new Date(date).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `${formattedDate} ${formattedTime}`;
   };
 
   return (
@@ -39,8 +47,14 @@ const PollCard: React.FC<PollCardProps> = ({ poll }) => {
             {poll.title}
           </Typography>
           <Chip
-            label={isActive ? "Active" : "Ended"}
-            color={isActive ? "success" : "default"}
+            label={poll.status} // Directly display the status from the database
+            color={
+              poll.status === "active"
+                ? "success"
+                : poll.status === "not started"
+                ? "info"
+                : "error" // Red background for "ended" polls
+            }
             size="small"
           />
         </Box>
@@ -49,9 +63,34 @@ const PollCard: React.FC<PollCardProps> = ({ poll }) => {
             ? `${poll.description.substring(0, 100)}...`
             : poll.description}
         </Typography>
-        <Typography variant="caption" display="block" gutterBottom>
-          Ends: {new Date(poll.endDate).toLocaleDateString()}
-        </Typography>
+        {poll.status === "ended" ? ( // Show "Started" and "Ended" for "ended" polls
+          <>
+            <Typography variant="caption" display="block" gutterBottom>
+              Started: {formatDateTime(poll.startDate)}
+            </Typography>
+            <Typography variant="caption" display="block" gutterBottom>
+              Ended: {formatDateTime(poll.endDate)}
+            </Typography>
+          </>
+        ) : poll.status === "active" ? ( // Show "Started" and "Ends" for "active" polls
+          <>
+            <Typography variant="caption" display="block" gutterBottom>
+              Started: {formatDateTime(poll.startDate)}
+            </Typography>
+            <Typography variant="caption" display="block" gutterBottom>
+              Ends: {formatDateTime(poll.endDate)}
+            </Typography>
+          </>
+        ) : (
+          <>
+            <Typography variant="caption" display="block" gutterBottom>
+              Starts: {formatDateTime(poll.startDate)}
+            </Typography>
+            <Typography variant="caption" display="block" gutterBottom>
+              Ends: {formatDateTime(poll.endDate)}
+            </Typography>
+          </>
+        )}
         <Typography variant="caption" display="block">
           Votes: {poll.totalVotes || 0}
         </Typography>
@@ -60,7 +99,7 @@ const PollCard: React.FC<PollCardProps> = ({ poll }) => {
         <Button size="small" onClick={handleViewResults}>
           View Results
         </Button>
-        {isActive && (
+        {poll.status === "not started" && ( // Only allow editing if the poll is "not started"
           <Button size="small" onClick={handleEditPoll}>
             Edit
           </Button>
