@@ -21,5 +21,5 @@ export interface Poll {
   createdAt: any; // Firestore timestamp
   updatedAt?: string;
   totalVotes: number;
-  status: 'active' | 'ended';
+  status: 'active' | 'ended' | 'not started';
 }
