@@ -24,6 +24,7 @@ import {
 import { auth, db } from "../../firebase/config";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
+// import emailjs from "@emailjs/browser"; // Commented out as it's not used
 
 const colleges: Record<string, string> = {
   "Herald College Kathmandu": "@heraldcollege.edu.np",
@@ -48,9 +49,18 @@ const VoterLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resetSent, setResetSent] = useState(false);
-  const [otp, setOtp] = useState("");
-  const [generatedOtp, setGeneratedOtp] = useState("");
-  const [step, setStep] = useState<"login" | "otp">("login");
+  // const [otp, setOtp] = useState("");
+  // const [generatedOtp, setGeneratedOtp] = useState("");
+  const [step, /* setStep */] = useState<"login" | "otp">("login"); // Commented out setStep as it's not used
+  const [passwordRequirements, setPasswordRequirements] = useState({
+    length: false,
+    uppercase: false,
+    number: false,
+    symbol: false,
+  });
+  const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
+  // const [otpExpirationTime, setOtpExpirationTime] = useState<number | null>(null); // Track OTP expiration time
+  // const [isOtpExpired, setIsOtpExpired] = useState(false); // Track if OTP is expired
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -62,6 +72,20 @@ const VoterLogin: React.FC = () => {
 
     return () => unsubscribe();
   }, [navigate]);
+
+  // useEffect(() => {
+  //   if (otpExpirationTime) {
+  //     const interval = setInterval(() => {
+  //       const currentTime = Date.now();
+  //       if (currentTime >= otpExpirationTime) {
+  //         setIsOtpExpired(true); // Mark OTP as expired
+  //         clearInterval(interval); // Clear the interval
+  //       }
+  //     }, 1000);
+
+  //     return () => clearInterval(interval); // Cleanup on unmount
+  //   }
+  // }, [otpExpirationTime]);
 
   const validateForm = (): boolean => {
     if (!email || !password) {
@@ -97,15 +121,55 @@ const VoterLogin: React.FC = () => {
     return true;
   };
 
-  const generateOtp = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString(); // Generate a 6-digit OTP
+  const validatePassword = (password: string) => {
+    const requirements = {
+      length: password.length >= 6,
+      uppercase: /[A-Z]/.test(password),
+      number: /\d/.test(password),
+      symbol: /[!@#$%^&*]/.test(password),
+    };
+    setPasswordRequirements(requirements);
+    return Object.values(requirements).every((req) => req);
   };
 
-  const sendOtp = async () => {
-    const otp = generateOtp();
-    setGeneratedOtp(otp);
-    console.log(`Generated OTP: ${otp}`); // Log OTP to the console
+  const handlePasswordChange = (value: string) => {
+    setPassword(value);
+    validatePassword(value);
   };
+
+  // const generateOtp = () => {
+  //   return Math.floor(100000 + Math.random() * 900000).toString(); // Generate a 6-digit OTP
+  // };
+
+  // const sendOtp = async () => {
+  //   const otp = generateOtp();
+  //   setGeneratedOtp(otp);
+  //   const expirationTime = new Date(Date.now() + 2 * 60 * 1000); // Set expiration time to 2 minutes from now
+  //   setOtpExpirationTime(expirationTime.getTime());
+  //   setIsOtpExpired(false); // Reset OTP expiration status
+
+  //   // Log OTP to the console for testing
+  //   console.log(`Generated OTP: ${otp}`);
+
+  //   // EmailJS configuration
+  //   const serviceId = "service_oaf1646"; // Replace with your EmailJS service ID
+  //   const templateId = "template_9xjtx7d"; // Replace with your EmailJS template ID
+  //   const publicKey = "z1LjV6uNRGIRUr8jW"; // Replace with your EmailJS public key
+
+  //   const templateParams = {
+  //     passcode: otp, // Generated OTP
+  //     time: expirationTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), // Expiration time in HH:MM format
+  //     email: email, // User's email (ensure this matches the placeholder in your EmailJS template)
+  //   };
+
+  //   try {
+  //     await emailjs.send(serviceId, templateId, templateParams, publicKey);
+  //     console.log(`OTP sent to ${email}: ${otp}`);
+  //   } catch (error) {
+  //     console.error("Error sending OTP via EmailJS:", error);
+  //     setError("Failed to send OTP. Please try again.");
+  //   }
+  // };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,8 +183,10 @@ const VoterLogin: React.FC = () => {
         await signInWithEmailAndPassword(auth, email, password);
 
         // Generate and send OTP
-        await sendOtp();
-        setStep("otp"); // Move to OTP verification step
+        // await sendOtp();
+        // setStep("otp"); // Move to OTP verification step
+        // Navigate to the dashboard after successful login
+        navigate("/voter");
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
@@ -164,17 +230,22 @@ const VoterLogin: React.FC = () => {
     }
   };
 
-  const handleOtpVerification = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  // const handleOtpVerification = (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   setError("");
 
-    if (otp === generatedOtp) {
-      // OTP verified, redirect to dashboard
-      window.location.href = "/voter";
-    } else {
-      setError("Invalid OTP. Please try again.");
-    }
-  };
+  //   if (isOtpExpired) {
+  //     setError("OTP has expired. Please request a new OTP.");
+  //     return;
+  //   }
+
+  //   if (otp === generatedOtp) {
+  //     // OTP verified, redirect to dashboard
+  //     window.location.href = "/voter";
+  //   } else {
+  //     setError("Invalid OTP. Please try again.");
+  //   }
+  // };
 
   const handleForgotPassword = async () => {
     if (!email) {
@@ -230,6 +301,39 @@ const VoterLogin: React.FC = () => {
             </Alert>
           )}
 
+          {/* {step === "otp" && (
+            <form onSubmit={handleOtpVerification}>
+              <Typography variant="body1" sx={{ mb: 2 }}>
+                Enter the OTP sent to your email.
+              </Typography>
+              <TextField
+                label="OTP"
+                variant="outlined"
+                type="text"
+                fullWidth
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                required
+                sx={{ mb: 2 }}
+                disabled={isOtpExpired} // Disable input if OTP is expired
+              />
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                fullWidth
+                disabled={loading || isOtpExpired} // Disable button if OTP is expired
+              >
+                {loading ? <CircularProgress size={24} /> : "Verify OTP"}
+              </Button>
+              {isOtpExpired && (
+                <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+                  OTP has expired. Please request a new OTP.
+                </Typography>
+              )}
+            </form>
+          )} */}
+
           {step === "login" && (
             <form onSubmit={handleSubmit}>
               <Grid container spacing={2}>
@@ -244,6 +348,29 @@ const VoterLogin: React.FC = () => {
                         onChange={(e) => setName(e.target.value)}
                         required={!isLogin}
                       />
+                    </Grid>
+
+                    <Grid item xs={12}>
+                      <FormControl fullWidth required>
+                        <InputLabel
+                          sx={{
+                            backgroundColor: "white",
+                            px: 0.5,
+                          }}
+                        >
+                          Choose Your College
+                        </InputLabel>
+                        <Select
+                          value={college}
+                          onChange={(e) => setCollege(e.target.value)}
+                        >
+                          {Object.keys(colleges).map((collegeName) => (
+                            <MenuItem key={collegeName} value={collegeName}>
+                              {collegeName}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
                     </Grid>
                   </>
                 )}
@@ -262,31 +389,6 @@ const VoterLogin: React.FC = () => {
                   />
                 </Grid>
 
-                {!isLogin && (
-                  <Grid item xs={12}>
-                    <FormControl fullWidth required>
-                      <InputLabel
-                        sx={{
-                          backgroundColor: "white",
-                          px: 0.5,
-                        }}
-                      >
-                        Choose Your College
-                      </InputLabel>
-                      <Select
-                        value={college}
-                        onChange={(e) => setCollege(e.target.value)}
-                      >
-                        {Object.keys(colleges).map((collegeName) => (
-                          <MenuItem key={collegeName} value={collegeName}>
-                            {collegeName}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                )}
-
                 <Grid item xs={12}>
                   <TextField
                     label="Password"
@@ -294,9 +396,27 @@ const VoterLogin: React.FC = () => {
                     type="password"
                     fullWidth
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => handlePasswordChange(e.target.value)}
+                    onFocus={() => !isLogin && setShowPasswordRequirements(true)} // Show requirements on focus
+                    onBlur={() => setShowPasswordRequirements(false)} // Hide requirements on blur
                     required
                   />
+                  {!isLogin && showPasswordRequirements && ( // Show only during registration and when focused
+                    <ul style={{ margin: "8px 0 0", paddingLeft: "20px", fontSize: "0.875rem", lineHeight: "1.2" }}>
+                      <li style={{ color: passwordRequirements.length ? "green" : "red" }}>
+                        Password must be at least 6 characters long
+                      </li>
+                      <li style={{ color: passwordRequirements.uppercase ? "green" : "red" }}>
+                        Password must include at least one capital letter
+                      </li>
+                      <li style={{ color: passwordRequirements.number ? "green" : "red" }}>
+                        Password must include at least one number
+                      </li>
+                      <li style={{ color: passwordRequirements.symbol ? "green" : "red" }}>
+                        Password must include at least one symbol (!@#$%^&*)
+                      </li>
+                    </ul>
+                  )}
                 </Grid>
 
                 {!isLogin && (
@@ -330,33 +450,6 @@ const VoterLogin: React.FC = () => {
                 ) : (
                   "Register"
                 )}
-              </Button>
-            </form>
-          )}
-
-          {step === "otp" && (
-            <form onSubmit={handleOtpVerification}>
-              <Typography variant="body1" sx={{ mb: 2 }}>
-                Enter the OTP sent to your email.
-              </Typography>
-              <TextField
-                label="OTP"
-                variant="outlined"
-                type="text"
-                fullWidth
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                required
-                sx={{ mb: 2 }}
-              />
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                fullWidth
-                disabled={loading}
-              >
-                {loading ? <CircularProgress size={24} /> : "Verify OTP"}
               </Button>
             </form>
           )}
