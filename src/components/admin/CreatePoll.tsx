@@ -129,7 +129,10 @@ const CreatePoll: React.FC = () => {
       const newPoll = {
         title,
         description,
-        candidates: candidates.map(({ id, ...rest }) => rest), // Remove the temporary IDs
+        candidates: candidates.map(({ id, ...rest }) => ({
+          ...rest,
+          votes: 0,
+        })),
         startDate: startDate?.toISOString(),
         endDate: endDate?.toISOString(),
         pollType,
