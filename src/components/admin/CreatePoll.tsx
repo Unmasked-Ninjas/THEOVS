@@ -23,7 +23,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { Delete as DeleteIcon, Add as AddIcon } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDoc, doc } from "firebase/firestore";
 import { db, auth } from "../../firebase/config";
 import { Candidate, PollType } from "../../types/Poll";
 
@@ -122,6 +122,27 @@ const CreatePoll: React.FC = () => {
         return;
       }
 
+      // Fetch the admin's college name from Firestore
+      const userDoc = await getDoc(doc(db, "users", userId));
+      const collegeName = userDoc.exists() ? userDoc.data().college : null;
+
+      if (!collegeName) {
+        setError("Failed to retrieve your college information.");
+        setLoading(false);
+        return;
+      }
+
+      // Determine the status based on start and end dates
+      const now = new Date();
+      let status = "not started";
+      if (startDate && endDate) {
+        if (now >= startDate && now <= endDate) {
+          status = "active";
+        } else if (now > endDate) {
+          status = "ended";
+        }
+      }
+
       const newPoll = {
         title,
         description,
@@ -134,9 +155,10 @@ const CreatePoll: React.FC = () => {
         pollType,
         isPublic,
         createdBy: userId,
+        collegeName, // Add the college name to the poll
         createdAt: serverTimestamp(),
         totalVotes: 0,
-        status: "active",
+        status, // Set the status dynamically
       };
 
       await addDoc(collection(db, "polls"), newPoll);
