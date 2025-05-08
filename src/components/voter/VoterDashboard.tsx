@@ -1,3 +1,4 @@
+//manage the result of voter dashboard
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -23,6 +24,7 @@ interface Poll {
   startDate: Date;
   endDate: Date;
   isActive: boolean;
+  status: string; // Add status to Poll interface
 }
 
 const VoterDashboard: React.FC = () => {
@@ -59,24 +61,45 @@ const VoterDashboard: React.FC = () => {
       const querySnapshot = await getDocs(pollsRef);
 
       const pollsData: Poll[] = [];
+      const now = new Date();
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
+        const startDate =
+          typeof data.startDate === "string"
+            ? new Date(data.startDate)
+            : data.startDate?.toDate?.() || new Date();
+        const endDate =
+          typeof data.endDate === "string"
+            ? new Date(data.endDate)
+            : data.endDate?.toDate?.() || new Date();
+
+        // Determine poll status
+        let status = "";
+        if (now < startDate) {
+          status = "Not Started";
+        } else if (now > endDate) {
+          const timeDifference = Math.abs(now.getTime() - endDate.getTime());
+          const daysDifference = timeDifference / (1000 * 60 * 60 * 24);
+          if (daysDifference <= 2) {
+            status = "Ended";
+          } else {
+            return; // Skip polls that ended more than 2 days ago
+          }
+        } else {
+          status = "Active";
+        }
+
+        // Include polls regardless of status but filter by college
         if (data.collegeName === voterCollegeName) {
           pollsData.push({
             id: doc.id,
             title: data.title,
             description: data.description,
-            // Handle both string dates and Firestore timestamps
-            startDate:
-              typeof data.startDate === "string"
-                ? new Date(data.startDate)
-                : data.startDate?.toDate?.() || new Date(),
-            endDate:
-              typeof data.endDate === "string"
-                ? new Date(data.endDate)
-                : data.endDate?.toDate?.() || new Date(),
-            isActive: data.status === "active", // Using the status field from your data
+            startDate,
+            endDate,
+            isActive: status === "Active",
+            status, // Add status to poll object
           });
         }
       });
