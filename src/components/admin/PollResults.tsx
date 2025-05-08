@@ -7,13 +7,19 @@ import {
   CardContent,
   CircularProgress,
   Button,
-  Divider,
   Grid,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  SelectChangeEvent, // Import SelectChangeEvent
+  Modal,
+  TextField,
 } from "@mui/material";
-import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../firebase/config";
-import { Poll } from "../../types/Poll";
+import { useNavigate } from "react-router-dom";
+import { collection, getDocs, getDoc, doc } from "firebase/firestore";
+import { db, auth } from "../../firebase/config";
+import { Poll as PollType } from "../../types/Poll"; // Rename imported Poll to PollType
 import {
   BarChart,
   Bar,
@@ -38,45 +44,143 @@ const COLORS = [
   "#ffc658",
 ];
 
+const colleges = [
+  "Herald College Kathmandu",
+  "Islington College",
+  "Biratnagar International College",
+  "Informatics College Pokhara",
+  "Fishtail Mountain College",
+  "Itahari International College",
+  "Apex College",
+  "International School of Tourism and Hotel Management (IST)",
+  "CG Institute of Management",
+];
+
+const statuses = ["All", "Upcoming", "Active", "Ended"];
+const sortOptions = ["Ascending", "Descending"];
+
+interface Poll {
+  id: string;
+  title: string;
+  description: string;
+  endDate: string;
+  createdAt: string;
+  totalVotes?: number;
+  collegeName: string; // Add collegeName to Poll type
+  status: string;
+}
+
 const PollResults: React.FC = () => {
-  const { pollId } = useParams<{ pollId: string }>();
   const navigate = useNavigate();
-  const [poll, setPoll] = useState<Poll | null>(null);
+  const [polls, setPolls] = useState<Poll[]>([]);
+  const [filteredPolls, setFilteredPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [chartType, setChartType] = useState<"bar" | "pie">("bar");
+  const [selectedCollege, setSelectedCollege] = useState<string>("");
+  const [advancedFilterOpen, setAdvancedFilterOpen] = useState<boolean>(false);
+  const [filterStatus, setFilterStatus] = useState<string>("All");
+  const [sortOrder, setSortOrder] = useState<string>("Ascending");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
 
   useEffect(() => {
-    const fetchPollData = async () => {
+    const fetchCollegesAndPolls = async () => {
       try {
-        if (!pollId) {
-          setError("Poll ID is missing");
+        const userId = auth.currentUser?.uid;
+        if (!userId) {
+          setError("User not authenticated");
           setLoading(false);
           return;
         }
 
-        const pollRef = doc(db, "polls", pollId);
-        const pollDoc = await getDoc(pollRef);
+        // Fetch user data to get the college name of the logged-in user
+        const userDoc = await getDoc(doc(db, "users", userId));
+        const userCollege = userDoc.data()?.college;
 
-        if (!pollDoc.exists()) {
-          setError("Poll not found");
+        if (!userCollege) {
+          setError("Failed to retrieve user college");
           setLoading(false);
           return;
         }
 
-        setPoll({ id: pollDoc.id, ...pollDoc.data() } as Poll);
+        // Fetch all polls
+        const pollsRef = collection(db, "polls");
+        const querySnapshot = await getDocs(pollsRef);
+
+        const allPolls: Poll[] = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Poll[];
+
+        setPolls(allPolls);
+
+        // Set default college to the logged-in user's college
+        setSelectedCollege(userCollege);
+        setFilteredPolls(
+          allPolls.filter((poll) => poll.collegeName === userCollege)
+        );
+
         setLoading(false);
-        console.log("Polldoc", pollDoc);
-        console.log("PollId", pollId);
       } catch (error) {
-        console.error("Error fetching poll data:", error);
-        setError("Failed to load poll results");
+        console.error("Error fetching polls or user data:", error);
+        setError("Failed to load polls");
         setLoading(false);
       }
     };
 
-    fetchPollData();
-  }, [pollId]);
+    fetchCollegesAndPolls();
+  }, []);
+
+  const handleCollegeChange = (event: SelectChangeEvent<string>) => {
+    const college = event.target.value;
+    setSelectedCollege(college);
+    setFilteredPolls(polls.filter((poll) => poll.collegeName === college));
+  };
+
+  const applyFilters = (
+    college: string,
+    status: string,
+    order: string,
+    from: string,
+    to: string
+  ) => {
+    let filtered = polls;
+
+    if (college) {
+      filtered = filtered.filter((poll) => poll.collegeName === college);
+    }
+
+    if (status !== "All") {
+      filtered = filtered.filter((poll) => poll.status === status.toLowerCase());
+    }
+
+    if (from && to) {
+      const fromDate = new Date(from);
+      const toDate = new Date(to);
+      filtered = filtered.filter((poll) => {
+        const createdAt = new Date(poll.createdAt);
+        return createdAt >= fromDate && createdAt <= toDate;
+      });
+    }
+
+    if (order === "Ascending") {
+      filtered = filtered.sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    } else {
+      filtered = filtered.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    }
+
+    setFilteredPolls(filtered);
+  };
+
+  const handleApplyFilters = () => {
+    applyFilters(selectedCollege, filterStatus, sortOrder, dateFrom, dateTo);
+    setAdvancedFilterOpen(false);
+  };
 
   if (loading) {
     return (
@@ -91,211 +195,196 @@ const PollResults: React.FC = () => {
     );
   }
 
-  if (error || !poll) {
-    return (
-      <Container maxWidth="md">
-        <Box my={4} textAlign="center">
-          <Typography variant="h5" color="error" gutterBottom>
-            {error || "Something went wrong"}
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => navigate("/admin/dashboard")}
-          >
-            Back to Dashboard
-          </Button>
-        </Box>
-      </Container>
-    );
-  }
-
-  console.log("Poll", poll);
-  // Calculate results for visualization
-  const resultsData = poll.candidates.map((candidate, index) => {
-    const voteCount = candidate.votes || 0;
-    const percentage =
-      poll.totalVotes > 0
-        ? ((voteCount / poll.totalVotes) * 100).toFixed(1)
-        : "0";
-
-    return {
-      name: candidate.name,
-      votes: voteCount,
-      percentage: parseFloat(percentage),
-      fill: COLORS[index % COLORS.length],
-    };
-  });
-
-  // Sort by votes (descending)
-  resultsData.sort((a, b) => b.votes - a.votes);
-
   return (
     <Container maxWidth="lg">
       <Box my={4}>
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          mb={2}
-        >
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
           <Typography variant="h4" component="h1" gutterBottom>
-            Poll Results
+            All Poll Results
           </Typography>
+          <Box display="flex" gap={2}>
+            <FormControl sx={{ minWidth: 200 }}>
+              <InputLabel
+                id="college-filter-label"
+                sx={{
+                  backgroundColor: "white",
+                  px: 0.5,
+                }}
+              >
+                Select College
+              </InputLabel>
+              <Select
+                labelId="college-filter-label"
+                value={selectedCollege}
+                onChange={handleCollegeChange}
+              >
+                {colleges.map((college) => (
+                  <MenuItem key={college} value={college}>
+                    {college}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => setAdvancedFilterOpen(true)}
+            >
+              Advanced Filter
+            </Button>
+          </Box>
+        </Box>
+        {filteredPolls.length === 0 ? (
+          <Box textAlign="center" my={4}>
+            <Typography variant="h6" color="textSecondary">
+              No polls found for the selected filters.
+            </Typography>
+          </Box>
+        ) : (
+          <Grid container spacing={4}>
+            {filteredPolls.map((poll) => (
+              <Grid item xs={12} sm={6} md={4} key={poll.id}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      {poll.title}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Status:{" "}
+                      <strong>
+                        {new Date() < new Date(poll.endDate) ? "Active" : "Ended"}
+                      </strong>
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Total Votes: {poll.totalVotes || 0}
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      sx={{ mt: 2 }}
+                      onClick={() => navigate(`/admin/poll-results/${poll.id}`)}
+                    >
+                      View Details
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </Box>
+
+      {/* Advanced Filter Modal */}
+      <Modal
+        open={advancedFilterOpen}
+        onClose={() => setAdvancedFilterOpen(false)}
+        aria-labelledby="advanced-filter-title"
+        aria-describedby="advanced-filter-description"
+      >
+        <Box
+          sx={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 400,
+            bgcolor: "background.paper",
+            boxShadow: 24,
+            p: 4,
+            borderRadius: 2,
+          }}
+        >
+          <Typography id="advanced-filter-title" variant="h6" gutterBottom>
+            Advanced Filters
+          </Typography>
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel
+              sx={{
+                backgroundColor: "white",
+                px: 0.5,
+              }}
+            >
+              Select College
+            </InputLabel>
+            <Select
+              value={selectedCollege}
+              onChange={(e) => setSelectedCollege(e.target.value)}
+            >
+              {colleges.map((college) => (
+                <MenuItem key={college} value={college}>
+                  {college}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel
+              sx={{
+                backgroundColor: "white",
+                px: 0.5,
+              }}
+            >
+              Status
+            </InputLabel>
+            <Select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              {statuses.map((status) => (
+                <MenuItem key={status} value={status}>
+                  {status}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel
+              sx={{
+                backgroundColor: "white",
+                px: 0.5,
+              }}
+            >
+              Sort By
+            </InputLabel>
+            <Select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+            >
+              {sortOptions.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Box display="flex" gap={2} mb={2}>
+            <TextField
+              label="From"
+              type="date"
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+            <TextField
+              label="To"
+              type="date"
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </Box>
           <Button
-            variant="outlined"
-            onClick={() => navigate("/admin/dashboard")}
+            variant="contained"
+            color="primary"
+            fullWidth
+            onClick={handleApplyFilters}
           >
-            Back to Dashboard
+            Apply
           </Button>
         </Box>
-
-        <Card sx={{ mb: 4 }}>
-          <CardContent>
-            <Typography variant="h5" gutterBottom>
-              {poll.title}
-            </Typography>
-            <Typography variant="body1" paragraph>
-              {poll.description}
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={4}>
-                <Typography variant="body2" color="textSecondary">
-                  Total Votes: <strong>{poll.totalVotes || 0}</strong>
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Typography variant="body2" color="textSecondary">
-                  Status:{" "}
-                  <strong>
-                    {new Date() < new Date(poll.endDate) ? "Active" : "Ended"}
-                  </strong>
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Typography variant="body2" color="textSecondary">
-                  End Date:{" "}
-                  <strong>{new Date(poll.endDate).toLocaleDateString()}</strong>
-                </Typography>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent>
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              mb={3}
-            >
-              <Typography variant="h6">Results Visualization</Typography>
-              <Box>
-                <Button
-                  variant={chartType === "bar" ? "contained" : "outlined"}
-                  onClick={() => setChartType("bar")}
-                  sx={{ mr: 1 }}
-                >
-                  Bar Chart
-                </Button>
-                <Button
-                  variant={chartType === "pie" ? "contained" : "outlined"}
-                  onClick={() => setChartType("pie")}
-                >
-                  Pie Chart
-                </Button>
-              </Box>
-            </Box>
-
-            {poll.totalVotes === 0 ? (
-              <Typography variant="body1" align="center" sx={{ my: 4 }}>
-                No votes have been cast yet.
-              </Typography>
-            ) : (
-              <Box sx={{ height: 400 }}>
-                {chartType === "bar" ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={resultsData}
-                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip
-                        formatter={(value, name) => [
-                          `${value} votes (${
-                            resultsData.find((d) => d.votes === value)
-                              ?.percentage
-                          }%)`,
-                          name,
-                        ]}
-                      />
-                      <Legend />
-                      <Bar dataKey="votes" fill="#8884d8" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={resultsData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={true}
-                        outerRadius={120}
-                        fill="#8884d8"
-                        dataKey="votes"
-                        nameKey="name"
-                        label={({ name, percentage }) =>
-                          `${name}: ${percentage}%`
-                        }
-                      >
-                        {resultsData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value) => [`${value} votes`, "Votes"]}
-                      />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </Box>
-            )}
-
-            <Box mt={4}>
-              <Typography variant="h6" gutterBottom>
-                Vote Distribution
-              </Typography>
-              <Grid container spacing={2}>
-                {resultsData.map((result, index) => (
-                  <Grid item xs={12} sm={6} md={4} key={index}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle1" gutterBottom>
-                          {result.name}
-                        </Typography>
-                        <Box display="flex" justifyContent="space-between">
-                          <Typography variant="body2">
-                            Votes: {result.votes}
-                          </Typography>
-                          <Typography variant="body2">
-                            {result.percentage}%
-                          </Typography>
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </Box>
-          </CardContent>
-        </Card>
-      </Box>
+      </Modal>
     </Container>
   );
 };
