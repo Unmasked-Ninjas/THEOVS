@@ -171,6 +171,13 @@ const VoteBallot: React.FC = () => {
     fetchPollData();
   }, [pollId]);
 
+  useEffect(() => {
+    if (hasVoted || success) {
+      const timer = setTimeout(() => navigate("/voter"), 2000); // Redirect after 2 seconds
+      return () => clearTimeout(timer); // Cleanup timer on unmount
+    }
+  }, [hasVoted, success, navigate]);
+
   const handleCandidateChange = (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -320,12 +327,11 @@ const VoteBallot: React.FC = () => {
 
         {hasVoted ? (
           <Alert severity="success" sx={{ mt: 3, mb: 3 }}>
-            You have already cast your vote for this poll.
+            You have already cast your vote for this poll. Redirecting to the dashboard...
           </Alert>
         ) : success ? (
           <Alert severity="success" sx={{ mt: 3, mb: 3 }}>
-            Your vote has been successfully recorded! Redirecting to
-            dashboard...
+            Your vote has been successfully recorded! Redirecting to the dashboard...
           </Alert>
         ) : (
           <Box sx={{ mt: 4 }}>

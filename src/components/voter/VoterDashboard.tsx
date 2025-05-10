@@ -14,7 +14,7 @@ import { signOut } from "firebase/auth";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../../firebase/config";
 import PollList from "./PollList";
-import PollResults from "../admin/PollResults";
+import PollResults from "./PollResults"; // Correct import for PollResults
 import VotingHistory from "./VotingHistory";
 
 interface Poll {
@@ -168,7 +168,7 @@ const VoterDashboard: React.FC = () => {
         <Box sx={{ p: 1 }}>
           {activeTab === 0 && <PollList polls={polls} />}
           {activeTab === 1 && <VotingHistory />}
-          {activeTab === 2 && <PollResults />}
+          {activeTab === 2 && <PollResults />} {/* Render PollResults component */}
         </Box>
       )}
     </Container>
