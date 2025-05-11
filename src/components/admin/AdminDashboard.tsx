@@ -9,7 +9,14 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  doc,
+  deleteDoc,
+} from "firebase/firestore";
 import { db, auth } from "../../firebase/config";
 import PollCard from "./PollCard";
 import { Poll } from "../../types/Poll";
@@ -52,6 +59,18 @@ const AdminDashboard: React.FC = () => {
 
   const handleCreatePoll = () => {
     navigate("/admin/create-poll");
+  };
+
+  const handleDeletePoll = async (pollId: string) => {
+    try {
+      // Delete the poll document from Firestore
+      await deleteDoc(doc(db, "polls", pollId));
+
+      // Remove the poll from the state
+      setPolls((prevPolls) => prevPolls.filter((poll) => poll.id !== pollId));
+    } catch (error) {
+      console.error("Error deleting poll:", error);
+    }
   };
 
   if (loading) {
@@ -109,7 +128,7 @@ const AdminDashboard: React.FC = () => {
             <Grid container spacing={3}>
               {polls.map((poll) => (
                 <Grid item xs={12} sm={6} md={4} key={poll.id}>
-                  <PollCard poll={poll} />
+                  <PollCard poll={poll} onDelete={handleDeletePoll} />
                 </Grid>
               ))}
             </Grid>

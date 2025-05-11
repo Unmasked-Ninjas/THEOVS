@@ -8,20 +8,29 @@ import {
   Tab,
   CircularProgress,
   Button,
+  Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  useTheme,
+  SelectChangeEvent,
 } from "@mui/material";
 import { signOut } from "firebase/auth";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { auth, db } from "../../firebase/config";
 import PollList from "./PollList";
-import PollResults from "../admin/PollResults";
+import VoterPollResults from "../voter/VoterPollResults";
 import VotingHistory from "./VotingHistory";
+import {
+  Refresh as RefreshIcon,
+  ExitToApp as ExitToAppIcon,
+  Dashboard as DashboardIcon,
+  Poll as PollIcon,
+  History as HistoryIcon,
+  Assessment as AssessmentIcon,
+} from "@mui/icons-material";
+import { useSearchParams } from "react-router-dom";
 
 interface Poll {
   id: string;
@@ -37,105 +46,235 @@ const VoterDashboard: React.FC = () => {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedPollId, setSelectedPollId] = useState<string>("");
+  const theme = useTheme();
+  const [searchParams, setSearchParams] = useSearchParams();
 
+  // fetch polls on mount
   useEffect(() => {
     fetchPolls();
+    const pollIdFromUrl = searchParams.get("pollId");
+    if (pollIdFromUrl) setSelectedPollId(pollIdFromUrl);
   }, []);
 
   const fetchPolls = async () => {
     setLoading(true);
     try {
-      const pollsRef = collection(db, "polls");
-      // You can add the filter back if needed
-      // const pollQuery = query(pollsRef, where("status", "==", "active"));
-      const querySnapshot = await getDocs(pollsRef);
-
-      const pollsData: Poll[] = [];
-
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        pollsData.push({
+      const qs = await getDocs(collection(db, "polls"));
+      const data: Poll[] = qs.docs.map((doc) => {
+        const d = doc.data();
+        return {
           id: doc.id,
-          title: data.title,
-          description: data.description,
-          // Handle both string dates and Firestore timestamps
+          title: d.title,
+          description: d.description,
           startDate:
-            typeof data.startDate === "string"
-              ? new Date(data.startDate)
-              : data.startDate?.toDate?.() || new Date(),
+            typeof d.startDate === "string"
+              ? new Date(d.startDate)
+              : d.startDate?.toDate?.() || new Date(),
           endDate:
-            typeof data.endDate === "string"
-              ? new Date(data.endDate)
-              : data.endDate?.toDate?.() || new Date(),
-          isActive: data.status === "active", // Using the status field from your data
-        });
+            typeof d.endDate === "string"
+              ? new Date(d.endDate)
+              : d.endDate?.toDate?.() || new Date(),
+          isActive: d.status === "active",
+        };
       });
+      setPolls(data);
 
-      setPolls(pollsData);
-    } catch (err) {
-      console.error("Error fetching polls:", err);
-      setError(`Failed to fetch polls: ${err || "Unknown error"}`);
+      // default selection
+      if (data.length && !selectedPollId) {
+        setSelectedPollId(data[0].id);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(`Failed to fetch polls: ${err.message || err}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
-    setActiveTab(newValue);
+  const now = new Date();
+
+  // Available = active OR upcoming OR ended ≤ 1 day ago
+  const availablePolls = polls.filter((p) => {
+    const endedPlusOne = new Date(p.endDate.getTime() + 86400000);
+    return p.isActive || p.startDate > now || endedPlusOne >= now;
+  });
+
+  // Results = fully ended polls (you can keep or remove the 24-hour grace period here)
+  const endedPolls = polls.filter((p) => !p.isActive);
+
+  const handleTabChange = (_: React.SyntheticEvent, v: number) => {
+    setActiveTab(v);
+    if (v === 2 && selectedPollId) {
+      setSearchParams({ pollId: selectedPollId });
+    } else {
+      setSearchParams({});
+    }
   };
 
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      // Redirect to login happens via Router auth listener
     } catch (err) {
-      console.error("Error signing out:", err);
+      console.error(err);
     }
   };
 
+  const handlePollChange = (e: SelectChangeEvent<string>) => {
+    const id = e.target.value;
+    setSelectedPollId(id);
+    if (activeTab === 2) setSearchParams({ pollId: id });
+  };
+
+  const tabIcons = [
+    <PollIcon key="p" />,
+    <HistoryIcon key="h" />,
+    <AssessmentIcon key="r" />,
+  ];
+
   return (
     <Container maxWidth="lg">
-      <Box
+      {/* Header */}
+      <Paper
+        elevation={3}
         sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          mb: 4,
-          mt: 2,
+          p: 3,
+          my: 3,
+          borderRadius: 2,
+          background: `linear-gradient(to right, ${theme.palette.primary.light}, ${theme.palette.primary.main})`,
+          color: "white",
         }}
       >
-        <Typography variant="h4" component="h1">
-          Voter Dashboard
-        </Typography>
-        <Button variant="outlined" color="error" onClick={handleSignOut}>
-          Sign Out
-        </Button>
-      </Box>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box display="flex" alignItems="center">
+            <DashboardIcon sx={{ fontSize: 32, mr: 2 }} />
+            <Typography variant="h4" fontWeight="bold">
+              Voter Dashboard
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<ExitToAppIcon />}
+            onClick={handleSignOut}
+            sx={{
+              bgcolor: "error.light",
+              "&:hover": { bgcolor: "error.main" },
+              fontWeight: "bold",
+            }}
+          >
+            Sign Out
+          </Button>
+        </Box>
+      </Paper>
 
-      <Paper sx={{ mb: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange} centered>
-          <Tab label="Available Polls" />
-          <Tab label="My Voting History" />
-          <Tab label="Results" />
+      {/* Tabs */}
+      <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, overflow: "hidden" }}>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          variant="fullWidth"
+          textColor="primary"
+          indicatorColor="primary"
+        >
+          <Tab
+            icon={tabIcons[0]}
+            label="Available Polls"
+            iconPosition="start"
+          />
+          <Tab
+            icon={tabIcons[1]}
+            label="My Voting History"
+            iconPosition="start"
+          />
+          <Tab icon={tabIcons[2]} label="Results" iconPosition="start" />
         </Tabs>
       </Paper>
 
+      {/* Content */}
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+        <Box display="flex" justifyContent="center" p={4}>
           <CircularProgress />
         </Box>
       ) : error ? (
-        <Box sx={{ p: 3, textAlign: "center" }}>
-          <Typography color="error">{error}</Typography>
-          <Button variant="contained" onClick={fetchPolls} sx={{ mt: 2 }}>
+        <Paper
+          elevation={2}
+          sx={{
+            p: 3,
+            textAlign: "center",
+            borderRadius: 2,
+            border: `1px solid ${theme.palette.error.light}`,
+            bgcolor: theme.palette.error.light + "10",
+          }}
+        >
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+          <Button
+            variant="contained"
+            startIcon={<RefreshIcon />}
+            onClick={fetchPolls}
+          >
             Retry
           </Button>
-        </Box>
+        </Paper>
       ) : (
-        <Box sx={{ p: 1 }}>
-          {activeTab === 0 && <PollList polls={polls} />}
+        <Box p={1}>
+          {/* Available Polls */}
+          {activeTab === 0 && <PollList polls={availablePolls} />}
+
+          {/* Voting History */}
           {activeTab === 1 && <VotingHistory />}
-          {activeTab === 2 && <PollResults />}
+
+          {/* Results */}
+          {activeTab === 2 && (
+            <Box mb={3}>
+              {endedPolls.length > 0 ? (
+                <>
+                  <Paper
+                    elevation={1}
+                    sx={{
+                      p: 3,
+                      mb: 3,
+                      borderRadius: 2,
+                      bgcolor: theme.palette.grey[50],
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom>
+                      Select a Poll to View Results
+                    </Typography>
+                    <FormControl fullWidth>
+                      <InputLabel id="poll-select-label">Poll</InputLabel>
+                      <Select
+                        labelId="poll-select-label"
+                        value={selectedPollId}
+                        label="Poll"
+                        onChange={handlePollChange}
+                      >
+                        {endedPolls.map((p) => (
+                          <MenuItem key={p.id} value={p.id}>
+                            {p.title}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Paper>
+                  {selectedPollId ? (
+                    <VoterPollResults />
+                  ) : (
+                    <Alert severity="info">
+                      Please select a poll to view results
+                    </Alert>
+                  )}
+                </>
+              ) : (
+                <Alert severity="info">
+                  No ended polls available. Results will appear once polls
+                  complete.
+                </Alert>
+              )}
+            </Box>
+          )}
         </Box>
       )}
     </Container>

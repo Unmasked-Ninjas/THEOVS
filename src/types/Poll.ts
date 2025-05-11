@@ -9,6 +9,8 @@ export interface Candidate {
 }
 
 export interface Poll {
+  active: any;
+  questions: any;
   id: string;
   title: string;
   description?: string;
