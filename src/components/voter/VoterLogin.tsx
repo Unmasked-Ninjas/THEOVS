@@ -27,6 +27,7 @@ import { useNavigate } from "react-router-dom";
 // import emailjs from "@emailjs/browser"; // Commented out as it's not used
 
 const colleges: Record<string, string> = {
+  "Gmail college kathmandu": "@gmail.com",
   "Herald College Kathmandu": "@heraldcollege.edu.np",
   "Islington College": "@islingtoncollege.edu.np",
   "Biratnagar International College": "@bicnepal.edu.np",
