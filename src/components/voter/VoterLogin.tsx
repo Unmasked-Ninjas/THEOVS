@@ -22,9 +22,9 @@ import {
   sendEmailVerification,
 } from "firebase/auth";
 import { auth, db } from "../../firebase/config";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, collection, getDocs } from "firebase/firestore"; // Import Firestore methods
 import { useNavigate } from "react-router-dom";
-// import emailjs from "@emailjs/browser"; // Commented out as it's not used
+import emailjs from "@emailjs/browser"; // Uncommented as it's now used
 
 const colleges: Record<string, string> = {
   "Gmail college kathmandu": "@gmail.com",
@@ -50,9 +50,11 @@ const VoterLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resetSent, setResetSent] = useState(false);
-  // const [otp, setOtp] = useState("");
-  // const [generatedOtp, setGeneratedOtp] = useState("");
-  const [step, /* setStep */] = useState<"login" | "otp">("login"); // Commented out setStep as it's not used
+  const [otp, setOtp] = useState("");
+  const [generatedOtp, setGeneratedOtp] = useState("");
+  const [otpExpirationTime, setOtpExpirationTime] = useState<number | null>(null); // Track OTP expiration time
+  const [isOtpExpired, setIsOtpExpired] = useState(false); // Track if OTP is expired
+  const [step, setStep] = useState<"login" | "otp">("login"); // Enable step state
   const [passwordRequirements, setPasswordRequirements] = useState({
     length: false,
     uppercase: false,
@@ -60,8 +62,6 @@ const VoterLogin: React.FC = () => {
     symbol: false,
   });
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
-  // const [otpExpirationTime, setOtpExpirationTime] = useState<number | null>(null); // Track OTP expiration time
-  // const [isOtpExpired, setIsOtpExpired] = useState(false); // Track if OTP is expired
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -74,19 +74,19 @@ const VoterLogin: React.FC = () => {
     return () => unsubscribe();
   }, [navigate]);
 
-  // useEffect(() => {
-  //   if (otpExpirationTime) {
-  //     const interval = setInterval(() => {
-  //       const currentTime = Date.now();
-  //       if (currentTime >= otpExpirationTime) {
-  //         setIsOtpExpired(true); // Mark OTP as expired
-  //         clearInterval(interval); // Clear the interval
-  //       }
-  //     }, 1000);
+  useEffect(() => {
+    if (otpExpirationTime) {
+      const interval = setInterval(() => {
+        const currentTime = Date.now();
+        if (currentTime >= otpExpirationTime) {
+          setIsOtpExpired(true); // Mark OTP as expired
+          clearInterval(interval); // Clear the interval
+        }
+      }, 1000);
 
-  //     return () => clearInterval(interval); // Cleanup on unmount
-  //   }
-  // }, [otpExpirationTime]);
+      return () => clearInterval(interval); // Cleanup on unmount
+    }
+  }, [otpExpirationTime]);
 
   const validateForm = (): boolean => {
     if (!email || !password) {
@@ -138,39 +138,71 @@ const VoterLogin: React.FC = () => {
     validatePassword(value);
   };
 
-  // const generateOtp = () => {
-  //   return Math.floor(100000 + Math.random() * 900000).toString(); // Generate a 6-digit OTP
-  // };
+  const generateOtp = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString(); // Generate a 6-digit OTP
+  };
 
-  // const sendOtp = async () => {
-  //   const otp = generateOtp();
-  //   setGeneratedOtp(otp);
-  //   const expirationTime = new Date(Date.now() + 2 * 60 * 1000); // Set expiration time to 2 minutes from now
-  //   setOtpExpirationTime(expirationTime.getTime());
-  //   setIsOtpExpired(false); // Reset OTP expiration status
+  const sendOtp = async (email: string, otp: string) => {
+    const expirationTime = new Date(Date.now() + 2 * 60 * 1000); // Set expiration time to 2 minutes from now
+    setOtpExpirationTime(expirationTime.getTime());
+    setIsOtpExpired(false); // Reset OTP expiration status
 
-  //   // Log OTP to the console for testing
-  //   console.log(`Generated OTP: ${otp}`);
+    // EmailJS configuration
+    const serviceId = "service_oaf1646"; // Replace with your EmailJS service ID
+    const templateId = "template_9xjtx7d"; // Replace with your EmailJS template ID
+    const publicKey = "z1LjV6uNRGIRUr8jW"; // Replace with your EmailJS public key
 
-  //   // EmailJS configuration
-  //   const serviceId = "service_oaf1646"; // Replace with your EmailJS service ID
-  //   const templateId = "template_9xjtx7d"; // Replace with your EmailJS template ID
-  //   const publicKey = "z1LjV6uNRGIRUr8jW"; // Replace with your EmailJS public key
+    const templateParams = {
+      passcode: otp, // Generated OTP
+      time: expirationTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), // Expiration time in HH:MM format
+      email: email, // User's email
+    };
 
-  //   const templateParams = {
-  //     passcode: otp, // Generated OTP
-  //     time: expirationTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), // Expiration time in HH:MM format
-  //     email: email, // User's email (ensure this matches the placeholder in your EmailJS template)
-  //   };
+    try {
+      //await emailjs.send(serviceId, templateId, templateParams, publicKey);
+      console.log(`OTP sent to ${email}: ${otp}`);
+    } catch (error) {
+      console.error("Error sending OTP via EmailJS:", error);
+      setError("Failed to send OTP. Please try again.");
+    }
+  };
 
-  //   try {
-  //     await emailjs.send(serviceId, templateId, templateParams, publicKey);
-  //     console.log(`OTP sent to ${email}: ${otp}`);
-  //   } catch (error) {
-  //     console.error("Error sending OTP via EmailJS:", error);
-  //     setError("Failed to send OTP. Please try again.");
-  //   }
-  // };
+  const generateUniqueUsername = async (name: string): Promise<string> => {
+    const usersCollection = collection(db, "users");
+    let username: string = ""; // Initialize username to an empty string
+    let isUnique = false;
+  
+    while (!isUnique) {
+      const randomDigits = Math.floor(1000 + Math.random() * 9000).toString(); // Generate 4 random digits
+      username = `${name.replace(/\s+/g, "").toLowerCase()}${randomDigits}`; // Combine name and digits
+      const querySnapshot = await getDocs(usersCollection);
+      isUnique = !querySnapshot.docs.some((doc) => doc.data().username === username); // Check uniqueness
+    }
+  
+    return username;
+  };
+  
+  const sendUsernameEmail = async (email: string, college_name: string, name: string) => {
+    try {
+      const username = await generateUniqueUsername(name);
+  
+      const serviceId = "service_oaf1646"; // Replace with your EmailJS service ID
+      const templateId = "template_lyj7rmk"; // Replace with your EmailJS template ID
+      const publicKey = "z1LjV6uNRGIRUr8jW"; // Replace with your EmailJS public key
+  
+      const templateParams = {
+        email: email,
+        name: name,
+        college_name: college_name,
+        username: username,
+      };
+  
+      await emailjs.send(serviceId, templateId, templateParams, publicKey);
+      console.log(`Username email sent to ${email}`);
+    } catch (error) {
+      console.error("Error sending username email:", error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,30 +223,55 @@ const VoterLogin: React.FC = () => {
           return;
         }
 
-        navigate("/voter");
+        // Generate OTP and send it to the user's email
+        const otp = generateOtp();
+        setGeneratedOtp(otp);
+        await sendOtp(email, otp);
+
+        // Redirect to OTP verification step
+        setStep("otp");
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
         // Send verification email
         await sendEmailVerification(userCredential.user);
+        setError("Verification email sent. Please verify your email to complete registration.");
+        setLoading(false);
 
-        // Store user data in the database
-        await setDoc(doc(db, "users", userCredential.user.uid), {
-          name,
-          email,
-          college,
-          role: "voter",
-          createdAt: serverTimestamp(),
-        });
+        // Wait for email verification
+        const interval = setInterval(async () => {
+          await userCredential.user.reload();
+          if (userCredential.user.emailVerified) {
+            clearInterval(interval);
 
-        setError("Registration successful. Please verify your email before logging in.");
-        setIsLogin(true);
-        setEmail("");
-        setPassword("");
-        setConfirmPassword("");
-        setCollege("");
-        setName("");
-        setResetSent(false);
+            // Generate a unique username
+            const username = await generateUniqueUsername(name);
+
+            // Store user data in the database
+            await setDoc(doc(db, "users", userCredential.user.uid), {
+              name,
+              email,
+              college,
+              username,
+              role: "voter",
+              createdAt: serverTimestamp(),
+            });
+
+            // Send username email
+            await sendUsernameEmail(email, college, name);
+
+            // Redirect to login page with success message
+            setError("");
+            setIsLogin(true);
+            setEmail("");
+            setPassword("");
+            setConfirmPassword("");
+            setCollege("");
+            setName("");
+            setResetSent(false);
+            navigate("/voter/login", { state: { successMessage: "Registration successful. Please log in." } });
+          }
+        }, 3000); // Check every 3 seconds
       }
     } catch (err: any) {
       console.error("Authentication error:", err);
@@ -233,22 +290,22 @@ const VoterLogin: React.FC = () => {
     }
   };
 
-  // const handleOtpVerification = (e: React.FormEvent) => {
-  //   e.preventDefault();
-  //   setError("");
+  const handleOtpVerification = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
 
-  //   if (isOtpExpired) {
-  //     setError("OTP has expired. Please request a new OTP.");
-  //     return;
-  //   }
+    if (isOtpExpired) {
+      setError("OTP has expired. Please request a new OTP.");
+      return;
+    }
 
-  //   if (otp === generatedOtp) {
-  //     // OTP verified, redirect to dashboard
-  //     window.location.href = "/voter";
-  //   } else {
-  //     setError("Invalid OTP. Please try again.");
-  //   }
-  // };
+    if (otp === generatedOtp) {
+      // OTP verified, redirect to dashboard
+      navigate("/voter");
+    } else {
+      setError("Invalid OTP. Please try again.");
+    }
+  };
 
   const handleForgotPassword = async () => {
     if (!email) {
@@ -305,12 +362,12 @@ const VoterLogin: React.FC = () => {
           )}
 
           {resetSent && !isLogin && (
-            <Alert severity="success" sx={{ mb: 3 }}>
+            <Alert severity="success" icon={<span style={{ color: "green" }}>✔</span>} sx={{ mb: 3 }}>
               Registration successful. Please verify your email before logging in.
             </Alert>
           )}
 
-          {/* {step === "otp" && (
+          {step === "otp" && (
             <form onSubmit={handleOtpVerification}>
               <Typography variant="body1" sx={{ mb: 2 }}>
                 Enter the OTP sent to your email.
@@ -341,7 +398,7 @@ const VoterLogin: React.FC = () => {
                 </Typography>
               )}
             </form>
-          )} */}
+          )}
 
           {step === "login" && (
             <form onSubmit={handleSubmit}>
