@@ -183,10 +183,14 @@ const VoterLogin: React.FC = () => {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
 
-        // Generate and send OTP
-        // await sendOtp();
-        // setStep("otp"); // Move to OTP verification step
-        // Navigate to the dashboard after successful login
+        const user = auth.currentUser;
+        if (user && !user.emailVerified) {
+          setError("Please verify your email before logging in.");
+          await auth.signOut();
+          setLoading(false);
+          return;
+        }
+
         navigate("/voter");
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -203,16 +207,14 @@ const VoterLogin: React.FC = () => {
           createdAt: serverTimestamp(),
         });
 
-        // After registration, switch to login mode
+        setError("Registration successful. Please verify your email before logging in.");
         setIsLogin(true);
         setEmail("");
         setPassword("");
         setConfirmPassword("");
         setCollege("");
         setName("");
-        setResetSent(false); // Clear any previous reset state
-        setError(""); // Clear any error messages
-        setResetSent(true); // Trigger success message
+        setResetSent(false);
       }
     } catch (err: any) {
       console.error("Authentication error:", err);
@@ -258,7 +260,7 @@ const VoterLogin: React.FC = () => {
     try {
       await sendPasswordResetEmail(auth, email);
       setResetSent(true);
-      setError("");
+      setError(""); // Clear any previous error
     } catch (err: any) {
       console.error("Password reset error:", err);
       if (err.code === "auth/user-not-found") {
@@ -296,9 +298,15 @@ const VoterLogin: React.FC = () => {
             </Alert>
           )}
 
-          {resetSent && (
+          {resetSent && isLogin && (
             <Alert severity="success" sx={{ mb: 3 }}>
-              Registration successful. Please log in.
+              Password reset link sent to your email.
+            </Alert>
+          )}
+
+          {resetSent && !isLogin && (
+            <Alert severity="success" sx={{ mb: 3 }}>
+              Registration successful. Please verify your email before logging in.
             </Alert>
           )}
 
