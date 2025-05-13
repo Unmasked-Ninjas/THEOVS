@@ -20,22 +20,17 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   sendEmailVerification,
-  updateProfile,
 } from "firebase/auth";
 import { auth, db } from "../../firebase/config";
 import {
   doc,
   setDoc,
   serverTimestamp,
-  getDoc,
-  getDocs,
-  query,
   collection,
-  where,
-} from "firebase/firestore";
+  getDocs,
+} from "firebase/firestore"; // Import Firestore methods
 import { useNavigate } from "react-router-dom";
-// Use emailjs to send the generated username to user's email
-import emailjs from "@emailjs/browser";
+import emailjs from "@emailjs/browser"; // Uncommented as it's now used
 
 const colleges: Record<string, string> = {
   "Gmail college kathmandu": "@gmail.com",
@@ -53,7 +48,6 @@ const colleges: Record<string, string> = {
 
 const VoterLogin: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -62,7 +56,13 @@ const VoterLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resetSent, setResetSent] = useState(false);
-  const [step, setStep] = useState<"login" | "otp">("login");
+  const [otp, setOtp] = useState("");
+  const [generatedOtp, setGeneratedOtp] = useState("");
+  const [otpExpirationTime, setOtpExpirationTime] = useState<number | null>(
+    null
+  ); // Track OTP expiration time
+  const [isOtpExpired, setIsOtpExpired] = useState(false); // Track if OTP is expired
+  const [step, setStep] = useState<"login" | "otp">("login"); // Enable step state
   const [passwordRequirements, setPasswordRequirements] = useState({
     length: false,
     uppercase: false,
@@ -71,7 +71,8 @@ const VoterLogin: React.FC = () => {
   });
   const [showPasswordRequirements, setShowPasswordRequirements] =
     useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
+  const [username, setUsername] = useState(""); // Add username state for login
+  const [showForgotPassword, setShowForgotPassword] = useState(false); // Add state to toggle forgot password view
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -84,15 +85,30 @@ const VoterLogin: React.FC = () => {
     return () => unsubscribe();
   }, [navigate]);
 
+  useEffect(() => {
+    if (otpExpirationTime) {
+      const interval = setInterval(() => {
+        const currentTime = Date.now();
+        if (currentTime >= otpExpirationTime) {
+          setIsOtpExpired(true); // Mark OTP as expired
+          clearInterval(interval); // Clear the interval
+        }
+      }, 1000);
+
+      return () => clearInterval(interval); // Cleanup on unmount
+    }
+  }, [otpExpirationTime]);
+
   const validateForm = (): boolean => {
-    if (isLogin) {
-      if (!username || !password) {
-        setError("Username and password are required");
-        return false;
-      }
-    } else {
-      if (!email || !password || !name || !college) {
-        setError("All fields are required");
+    if (isLogin && (!username || !password)) {
+      // Validate username instead of email for login
+      setError("Username and password are required");
+      return false;
+    }
+
+    if (!isLogin) {
+      if (!college) {
+        setError("College is required");
         return false;
       }
 
@@ -135,146 +151,182 @@ const VoterLogin: React.FC = () => {
     validatePassword(value);
   };
 
-  // Generate a unique username based on name and random digits
-  const generateUsername = (fullName: string): string => {
-    const nameParts = fullName.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const randomDigits = Math.floor(1000 + Math.random() * 9000); // 4-digit random number
-    return `${nameParts.substring(0, 12)}${randomDigits}`;
+  const generateOtp = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString(); // Generate a 6-digit OTP
   };
 
-  // Check if username already exists in the database
-  const isUsernameAvailable = async (username: string): Promise<boolean> => {
-    const usersRef = collection(db, "users");
-    const q = query(usersRef, where("username", "==", username));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.empty;
-  };
+  const sendOtp = async (email: string, otp: string) => {
+    const expirationTime = new Date(Date.now() + 2 * 60 * 1000); // Set expiration time to 2 minutes from now
+    setOtpExpirationTime(expirationTime.getTime());
+    setIsOtpExpired(false); // Reset OTP expiration status
 
-  // Generate a unique username that doesn't exist in the database
-  const generateUniqueUsername = async (fullName: string): Promise<string> => {
-    let username = generateUsername(fullName);
-    let isAvailable = await isUsernameAvailable(username);
-
-    // If the username already exists, keep trying until we find an available one
-    while (!isAvailable) {
-      username = generateUsername(fullName);
-      isAvailable = await isUsernameAvailable(username);
-    }
-
-    return username;
-  };
-
-  // Send username to user's email
-  const sendUsernameEmail = async (
-    userEmail: string,
-    userUsername: string,
-    userName: string
-  ) => {
     // EmailJS configuration
     const serviceId = "service_oaf1646"; // Replace with your EmailJS service ID
     const templateId = "template_9xjtx7d"; // Replace with your EmailJS template ID
     const publicKey = "z1LjV6uNRGIRUr8jW"; // Replace with your EmailJS public key
 
     const templateParams = {
-      to_name: userName,
-      username: userUsername,
-      email: userEmail,
+      passcode: otp, // Generated OTP
+      time: expirationTime.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }), // Expiration time in HH:MM format
+      email: email, // User's email
     };
 
     try {
-      await emailjs.send(serviceId, templateId, templateParams, publicKey);
-      console.log(`Username sent to ${userEmail}: ${userUsername}`);
+      await emailjs.send(serviceId, templateId, templateParams, publicKey); // Uncomment this line to send the email
+      console.log(`OTP sent to ${email}: ${otp}`);
     } catch (error) {
-      console.error("Error sending username via EmailJS:", error);
-      setError("Failed to send username. Please contact support.");
+      console.error("Error sending OTP via EmailJS:", error);
+      setError("Failed to send OTP. Please try again.");
+    }
+  };
+
+  const generateUniqueUsername = async (name: string): Promise<string> => {
+    const usersCollection = collection(db, "users");
+    let username: string = ""; // Initialize username to an empty string
+    let isUnique = false;
+
+    while (!isUnique) {
+      const randomDigits = Math.floor(1000 + Math.random() * 9000).toString(); // Generate 4 random digits
+      username = `${name.replace(/\s+/g, "").toLowerCase()}${randomDigits}`; // Combine name and digits
+      const querySnapshot = await getDocs(usersCollection);
+      isUnique = !querySnapshot.docs.some(
+        (doc) => doc.data().username === username
+      ); // Check uniqueness
+    }
+
+    return username;
+  };
+
+  const sendUsernameEmail = async (
+    email: string,
+    college_name: string,
+    name: string,
+    username: string // Pass the generated username as a parameter
+  ) => {
+    try {
+      const serviceId = "service_oaf1646"; // Replace with your EmailJS service ID
+      const templateId = "template_lyj7rmk"; // Replace with your EmailJS template ID
+      const publicKey = "z1LjV6uNRGIRUr8jW"; // Replace with your EmailJS public key
+
+      const templateParams = {
+        email: email,
+        name: name,
+        college_name: college_name,
+        username: username, // Use the passed username
+      };
+
+      await emailjs.send(serviceId, templateId, templateParams, publicKey);
+      console.log(`Username email sent to ${email}`);
+    } catch (error) {
+      console.error("Error sending username email:", error);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setSuccessMessage("");
 
     if (!validateForm()) return;
 
     setLoading(true);
     try {
       if (isLogin) {
-        // Login with username
-        // First, query Firestore to find the user document with this username
-        const usersRef = collection(db, "users");
-        const q = query(usersRef, where("username", "==", username));
-        const querySnapshot = await getDocs(q);
+        // Fetch the user document by username
+        const querySnapshot = await getDocs(collection(db, "users"));
+        const userDoc = querySnapshot.docs.find(
+          (doc) => doc.data().username === username
+        );
 
-        if (querySnapshot.empty) {
-          throw new Error("user-not-found");
+        if (!userDoc) {
+          setError("Invalid username or password");
+          setLoading(false);
+          return;
         }
 
-        // Get the email associated with this username
-        const userDoc = querySnapshot.docs[0];
-        const userData = userDoc.data();
-        const userEmail = userData.email;
-
-        // Use the email to sign in
+        const userEmail = userDoc.data().email; // Retrieve email associated with the username
         await signInWithEmailAndPassword(auth, userEmail, password);
-        navigate("/voter");
+
+        const user = auth.currentUser;
+        if (user && !user.emailVerified) {
+          setError("Please verify your email before logging in.");
+          await auth.signOut();
+          setLoading(false);
+          return;
+        }
+
+        // Generate OTP and send it to the user's email
+        const otp = generateOtp();
+        setGeneratedOtp(otp);
+        await sendOtp(userEmail, otp);
+
+        // Redirect to OTP verification step
+        setStep("otp");
       } else {
-        // Registration process
-        // 1. Create the user account with email/password
         const userCredential = await createUserWithEmailAndPassword(
           auth,
           email,
           password
         );
 
-        // 2. Generate a unique username
-        const uniqueUsername = await generateUniqueUsername(name);
-
-        // 3. Update user profile with the username
-        await updateProfile(userCredential.user, {
-          displayName: uniqueUsername,
-        });
-
-        // 4. Send verification email
+        // Send verification email
         await sendEmailVerification(userCredential.user);
-
-        // 5. Store user data in the database
-        await setDoc(doc(db, "users", userCredential.user.uid), {
-          name,
-          email,
-          username: uniqueUsername,
-          college,
-          role: "voter",
-          createdAt: serverTimestamp(),
-        });
-
-        // 6. Send username to the user's email
-        await sendUsernameEmail(email, uniqueUsername, name);
-
-        // 7. Show success message and reset the form
-        setSuccessMessage(
-          `Registration successful! Your username has been sent to ${email}. Please check your inbox.`
+        setError(
+          "Verification email sent. Please verify your email to complete registration."
         );
-        setIsLogin(true);
-        setEmail("");
-        setPassword("");
-        setConfirmPassword("");
-        setCollege("");
-        setName("");
-        setResetSent(false);
-        setError("");
+        setLoading(false);
+
+        // Wait for email verification
+        const interval = setInterval(async () => {
+          await userCredential.user.reload();
+          if (userCredential.user.emailVerified) {
+            clearInterval(interval);
+
+            // Generate a unique username
+            const generatedUsername = await generateUniqueUsername(name);
+
+            // Store user data in the database
+            await setDoc(doc(db, "users", userCredential.user.uid), {
+              name,
+              email,
+              college,
+              username: generatedUsername, // Save the generated username
+              role: "voter",
+              createdAt: serverTimestamp(),
+            });
+
+            // Send username email
+            await sendUsernameEmail(email, college, name, generatedUsername); // Pass the generated username
+
+            // Redirect to login page with success message
+            setError("");
+            setIsLogin(true);
+            setEmail("");
+            setPassword("");
+            setConfirmPassword("");
+            setCollege("");
+            setName("");
+            setResetSent(false);
+            navigate("/voter/login", {
+              state: {
+                successMessage:
+                  "Registration successful. Use your username and password to log in.",
+              },
+            });
+          }
+        }, 3000); // Check every 3 seconds
       }
     } catch (err: any) {
       console.error("Authentication error:", err);
       if (
-        err.message === "user-not-found" ||
+        err.code === "auth/user-not-found" ||
         err.code === "auth/wrong-password"
       ) {
         setError("Invalid username or password");
       } else if (err.code === "auth/email-already-in-use") {
         setError("Email is already registered");
-      } else if (err.code === "auth/user-not-found") {
-        setError("No account found with this username");
       } else {
         setError("An error occurred. Please try again.");
       }
@@ -283,39 +335,54 @@ const VoterLogin: React.FC = () => {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!username) {
-      setError("Please enter your username");
+  const handleOtpVerification = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (isOtpExpired) {
+      setError("OTP has expired. Please request a new OTP.");
+      return;
+    }
+
+    if (otp === generatedOtp) {
+      // OTP verified, redirect to dashboard
+      navigate("/voter");
+    } else {
+      setError("Invalid OTP. Please try again.");
+    }
+  };
+
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (!email) {
+      setError("Please enter your email address");
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address");
       return;
     }
 
     setLoading(true);
     try {
-      // Find the email associated with this username
-      const usersRef = collection(db, "users");
-      const q = query(usersRef, where("username", "==", username));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        setError("No account found with this username");
-        return;
-      }
-
-      // Get the email from the user document
-      const userDoc = querySnapshot.docs[0];
-      const userData = userDoc.data();
-      const userEmail = userData.email;
-
-      // Send password reset email
-      await sendPasswordResetEmail(auth, userEmail);
+      await sendPasswordResetEmail(auth, email);
       setResetSent(true);
-      setSuccessMessage(
-        `Password reset link sent to the email associated with username ${username}`
-      );
-      setError("");
+      setError(""); // Clear any previous error
+      console.log(`Password reset email sent to ${email}`); // Debugging log
     } catch (err: any) {
       console.error("Password reset error:", err);
-      setError("Failed to send password reset email");
+      if (err.code === "auth/user-not-found") {
+        setError("No account found with this email");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Invalid email address");
+      } else {
+        setError("Failed to send password reset email. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -336,7 +403,7 @@ const VoterLogin: React.FC = () => {
             sx={{ mb: 3 }}
           >
             {isLogin
-              ? "Sign in with your username to access polls and cast your vote"
+              ? "Sign in to access polls and cast your vote"
               : "Create an account to participate in polls"}
           </Typography>
 
@@ -346,185 +413,267 @@ const VoterLogin: React.FC = () => {
             </Alert>
           )}
 
-          {successMessage && (
+          {resetSent && isLogin && (
             <Alert severity="success" sx={{ mb: 3 }}>
-              {successMessage}
+              Password reset link sent to your email.
             </Alert>
           )}
 
-          {step === "login" && (
-            <form onSubmit={handleSubmit}>
-              <Grid container spacing={2}>
-                {!isLogin && (
-                  <>
-                    <Grid item xs={12}>
-                      <TextField
-                        label="Full Name"
-                        variant="outlined"
-                        fullWidth
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required={!isLogin}
-                      />
-                    </Grid>
+          {resetSent && !isLogin && (
+            <Alert
+              severity="success"
+              icon={<span style={{ color: "green" }}>✔</span>}
+              sx={{ mb: 3 }}
+            >
+              Registration successful. Please verify your email before logging
+              in.
+            </Alert>
+          )}
 
-                    <Grid item xs={12}>
-                      <FormControl fullWidth required>
-                        <InputLabel
-                          sx={{
-                            backgroundColor: "white",
-                            px: 0.5,
-                          }}
-                        >
-                          Choose Your College
-                        </InputLabel>
-                        <Select
-                          value={college}
-                          onChange={(e) => setCollege(e.target.value)}
-                        >
-                          {Object.keys(colleges).map((collegeName) => (
-                            <MenuItem key={collegeName} value={collegeName}>
-                              {collegeName}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-
-                    <Grid item xs={12}>
-                      <TextField
-                        label="Email Address"
-                        variant="outlined"
-                        type="email"
-                        fullWidth
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required={!isLogin}
-                        helperText={
-                          college
-                            ? `Email must end with ${colleges[college]}`
-                            : ""
-                        }
-                      />
-                    </Grid>
-                  </>
-                )}
-
-                {isLogin ? (
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Username"
-                      variant="outlined"
-                      fullWidth
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      required
-                    />
-                  </Grid>
-                ) : null}
-
-                <Grid item xs={12}>
-                  <TextField
-                    label="Password"
-                    variant="outlined"
-                    type="password"
-                    fullWidth
-                    value={password}
-                    onChange={(e) => handlePasswordChange(e.target.value)}
-                    onFocus={() =>
-                      !isLogin && setShowPasswordRequirements(true)
-                    }
-                    onBlur={() => setShowPasswordRequirements(false)}
-                    required
-                  />
-                  {!isLogin && showPasswordRequirements && (
-                    <ul
-                      style={{
-                        margin: "8px 0 0",
-                        paddingLeft: "20px",
-                        fontSize: "0.875rem",
-                        lineHeight: "1.2",
-                      }}
-                    >
-                      <li
-                        style={{
-                          color: passwordRequirements.length ? "green" : "red",
-                        }}
-                      >
-                        Password must be at least 6 characters long
-                      </li>
-                      <li
-                        style={{
-                          color: passwordRequirements.uppercase
-                            ? "green"
-                            : "red",
-                        }}
-                      >
-                        Password must include at least one capital letter
-                      </li>
-                      <li
-                        style={{
-                          color: passwordRequirements.number ? "green" : "red",
-                        }}
-                      >
-                        Password must include at least one number
-                      </li>
-                      <li
-                        style={{
-                          color: passwordRequirements.symbol ? "green" : "red",
-                        }}
-                      >
-                        Password must include at least one symbol (!@#$%^&*)
-                      </li>
-                    </ul>
-                  )}
-                </Grid>
-
-                {!isLogin && (
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Confirm Password"
-                      variant="outlined"
-                      type="password"
-                      fullWidth
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required={!isLogin}
-                    />
-                  </Grid>
-                )}
-              </Grid>
-
+          {step === "otp" && (
+            <form onSubmit={handleOtpVerification}>
+              <Typography variant="body1" sx={{ mb: 2 }}>
+                Enter the OTP sent to your email.
+              </Typography>
+              <TextField
+                label="OTP"
+                variant="outlined"
+                type="text"
+                fullWidth
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                required
+                sx={{ mb: 2 }}
+                disabled={isOtpExpired} // Disable input if OTP is expired
+              />
               <Button
                 type="submit"
                 variant="contained"
                 color="primary"
                 fullWidth
-                size="large"
-                disabled={loading}
-                sx={{ mt: 3, mb: 2 }}
+                disabled={loading || isOtpExpired} // Disable button if OTP is expired
               >
-                {loading ? (
-                  <CircularProgress size={24} />
-                ) : isLogin ? (
-                  "Sign In"
-                ) : (
-                  "Register"
-                )}
+                {loading ? <CircularProgress size={24} /> : "Verify OTP"}
               </Button>
+              {isOtpExpired && (
+                <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+                  OTP has expired. Please request a new OTP.
+                </Typography>
+              )}
             </form>
           )}
 
-          {isLogin && (
-            <Box sx={{ textAlign: "center", mt: 1, mb: 2 }}>
-              <Button
-                color="primary"
-                onClick={handleForgotPassword}
-                disabled={loading}
-              >
-                Forgot password?
-              </Button>
-            </Box>
+          {step === "login" && (
+            <>
+              {showForgotPassword ? (
+                <form onSubmit={handleForgotPasswordSubmit}>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    Enter your email address to receive a password reset link.
+                  </Typography>
+                  <TextField
+                    label="Email Address"
+                    variant="outlined"
+                    type="email"
+                    fullWidth
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    sx={{ mb: 2 }}
+                  />
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    color="primary"
+                    fullWidth
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <CircularProgress size={24} />
+                    ) : (
+                      "Send Reset Link"
+                    )}
+                  </Button>
+                  <Button
+                    color="secondary"
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    onClick={() => {
+                      setShowForgotPassword(false);
+                      setError("");
+                      setResetSent(false);
+                    }}
+                  >
+                    Back to Login
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleSubmit}>
+                  <Grid container spacing={2}>
+                    {isLogin && (
+                      <Grid item xs={12}>
+                        <TextField
+                          label="Username" // Change label to Username
+                          variant="outlined"
+                          fullWidth
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          required
+                        />
+                      </Grid>
+                    )}
+                    {!isLogin && (
+                      <>
+                        <Grid item xs={12}>
+                          <TextField
+                            label="Full Name"
+                            variant="outlined"
+                            fullWidth
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            required={!isLogin}
+                          />
+                        </Grid>
+
+                        <Grid item xs={12}>
+                          <FormControl fullWidth required>
+                            <InputLabel
+                              sx={{
+                                backgroundColor: "white",
+                                px: 0.5,
+                              }}
+                            >
+                              Choose Your College
+                            </InputLabel>
+                            <Select
+                              value={college}
+                              onChange={(e) => setCollege(e.target.value)}
+                            >
+                              {Object.keys(colleges).map((collegeName) => (
+                                <MenuItem key={collegeName} value={collegeName}>
+                                  {collegeName}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                      </>
+                    )}
+
+                    <Grid item xs={12}>
+                      <TextField
+                        label="Password"
+                        variant="outlined"
+                        type="password"
+                        fullWidth
+                        value={password}
+                        onChange={(e) => handlePasswordChange(e.target.value)}
+                        onFocus={() =>
+                          !isLogin && setShowPasswordRequirements(true)
+                        } // Show requirements on focus
+                        onBlur={() => setShowPasswordRequirements(false)} // Hide requirements on blur
+                        required
+                      />
+                      {!isLogin &&
+                        showPasswordRequirements && ( // Show only during registration and when focused
+                          <ul
+                            style={{
+                              margin: "8px 0 0",
+                              paddingLeft: "20px",
+                              fontSize: "0.875rem",
+                              lineHeight: "1.2",
+                            }}
+                          >
+                            <li
+                              style={{
+                                color: passwordRequirements.length
+                                  ? "green"
+                                  : "red",
+                              }}
+                            >
+                              Password must be at least 6 characters long
+                            </li>
+                            <li
+                              style={{
+                                color: passwordRequirements.uppercase
+                                  ? "green"
+                                  : "red",
+                              }}
+                            >
+                              Password must include at least one capital letter
+                            </li>
+                            <li
+                              style={{
+                                color: passwordRequirements.number
+                                  ? "green"
+                                  : "red",
+                              }}
+                            >
+                              Password must include at least one number
+                            </li>
+                            <li
+                              style={{
+                                color: passwordRequirements.symbol
+                                  ? "green"
+                                  : "red",
+                              }}
+                            >
+                              Password must include at least one symbol
+                              (!@#$%^&*)
+                            </li>
+                          </ul>
+                        )}
+                    </Grid>
+
+                    {!isLogin && (
+                      <Grid item xs={12}>
+                        <TextField
+                          label="Confirm Password"
+                          variant="outlined"
+                          type="password"
+                          fullWidth
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          required={!isLogin}
+                        />
+                      </Grid>
+                    )}
+                  </Grid>
+
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    color="primary"
+                    fullWidth
+                    size="large"
+                    disabled={loading}
+                    sx={{ mt: 3, mb: 2 }}
+                  >
+                    {loading ? (
+                      <CircularProgress size={24} />
+                    ) : isLogin ? (
+                      "Sign In"
+                    ) : (
+                      "Register"
+                    )}
+                  </Button>
+                </form>
+              )}
+
+              {isLogin && (
+                <Box sx={{ textAlign: "center", mt: 1, mb: 2 }}>
+                  <Button
+                    color="primary"
+                    onClick={() => {
+                      setShowForgotPassword(true);
+                      setError("");
+                    }}
+                    disabled={loading}
+                  >
+                    Forgot password?
+                  </Button>
+                </Box>
+              )}
+            </>
           )}
 
           <Divider sx={{ my: 2 }} />

@@ -82,7 +82,7 @@ const LandingPage: React.FC = () => {
                 variant="outlined"
                 color="primary"
                 startIcon={<PersonAddIcon />}
-                onClick={() => navigate("/voter/login")}
+                onClick={() => navigate("/voter/register")}
               >
                 Register
               </Button>

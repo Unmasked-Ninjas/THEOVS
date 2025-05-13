@@ -20,6 +20,7 @@ import PollResults from "./components/admin/PollResults";
 
 // Voter components
 import VoterLogin from "./components/voter/VoterLogin";
+//import VoterRegister from "./components/voter/VoterRegister";
 import VoterDashboard from "./components/voter/VoterDashboard";
 import VoteBallot from "./components/voter/VoteBallot";
 
@@ -91,6 +92,7 @@ const App: React.FC = () => {
         <Route path="/" element={<LandingPage />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/voter/login" element={<VoterLogin />} />
+        {/* <Route path="/voter/register" element={<VoterRegister />} /> */}
         <Route path="/admin/register" element={<AdminRegister />} />
 
         {/* Protected admin routes */}

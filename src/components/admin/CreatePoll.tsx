@@ -17,6 +17,9 @@ import {
   SelectChangeEvent,
   Alert,
   Snackbar,
+  Checkbox,
+  ListItemText,
+  OutlinedInput,
 } from "@mui/material";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -26,6 +29,21 @@ import { useNavigate } from "react-router-dom";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../../firebase/config";
 import { Candidate, PollType } from "../../types/Poll";
+
+// College list
+const colleges: Record<string, string> = {
+  "Gmail college kathmandu": "@gmail.com",
+  "Herald College Kathmandu": "@heraldcollege.edu.np",
+  "Islington College": "@islingtoncollege.edu.np",
+  "Biratnagar International College": "@bicnepal.edu.np",
+  "Informatics College Pokhara": "@icp.edu.np",
+  "Fishtail Mountain College": "@fishtailmountain.edu.np",
+  "Itahari International College": "@icc.edu.np",
+  "Apex College": "@apexcollege.edu.np",
+  "International School of Tourism and Hotel Management (IST)":
+    "@istcollege.edu.np",
+  "CG Institute of Management": "@cgim.edu.np",
+};
 
 const CreatePoll: React.FC = () => {
   const navigate = useNavigate();
@@ -41,6 +59,7 @@ const CreatePoll: React.FC = () => {
   ); // Default 1 week
   const [pollType, setPollType] = useState<PollType>("single");
   const [isPublic, setIsPublic] = useState<boolean>(true);
+  const [selectedColleges, setSelectedColleges] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
@@ -51,6 +70,15 @@ const CreatePoll: React.FC = () => {
 
   const handleVisibilityChange = (event: SelectChangeEvent) => {
     setIsPublic(event.target.value === "public");
+  };
+
+  const handleCollegeChange = (
+    event: SelectChangeEvent<typeof selectedColleges>
+  ) => {
+    const {
+      target: { value },
+    } = event;
+    setSelectedColleges(typeof value === "string" ? value.split(",") : value);
   };
 
   const addCandidate = () => {
@@ -104,6 +132,11 @@ const CreatePoll: React.FC = () => {
       return false;
     }
 
+    if (!isPublic && selectedColleges.length === 0) {
+      setError("Please select at least one college for a private poll");
+      return false;
+    }
+
     return true;
   };
 
@@ -122,6 +155,15 @@ const CreatePoll: React.FC = () => {
         return;
       }
 
+      // Create a map of selected college domains
+      const selectedCollegeDomains = selectedColleges.reduce(
+        (acc: Record<string, string>, collegeKey: string) => {
+          acc[collegeKey] = colleges[collegeKey];
+          return acc;
+        },
+        {}
+      );
+
       const newPoll = {
         title,
         description,
@@ -133,6 +175,7 @@ const CreatePoll: React.FC = () => {
         endDate: endDate?.toISOString(),
         pollType,
         isPublic,
+        allowedColleges: isPublic ? null : selectedCollegeDomains,
         createdBy: userId,
         createdAt: serverTimestamp(),
         totalVotes: 0,
@@ -321,16 +364,58 @@ const CreatePoll: React.FC = () => {
                       >
                         <MenuItem value="public">Public</MenuItem>
                         <MenuItem value="private">
-                          Private (Invited Only)
+                          College-Specific (Restricted)
                         </MenuItem>
                       </Select>
                       <FormHelperText>
                         {isPublic
                           ? "Anyone with the link can vote"
-                          : "Only specific users can access and vote"}
+                          : "Only students from selected colleges can access and vote"}
                       </FormHelperText>
                     </FormControl>
                   </Grid>
+
+                  {!isPublic && (
+                    <Grid item xs={12}>
+                      <FormControl fullWidth>
+                        <InputLabel id="college-select-label">
+                          Select Colleges
+                        </InputLabel>
+                        <Select
+                          labelId="college-select-label"
+                          multiple
+                          value={selectedColleges}
+                          onChange={handleCollegeChange}
+                          input={<OutlinedInput label="Select Colleges" />}
+                          renderValue={(selected) => selected.join(", ")}
+                          MenuProps={{
+                            PaperProps: {
+                              style: {
+                                maxHeight: 224,
+                                width: 250,
+                              },
+                            },
+                          }}
+                        >
+                          {Object.keys(colleges).map((college) => (
+                            <MenuItem key={college} value={college}>
+                              <Checkbox
+                                checked={selectedColleges.indexOf(college) > -1}
+                              />
+                              <ListItemText
+                                primary={college}
+                                secondary={colleges[college]}
+                              />
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        <FormHelperText>
+                          Only users with email domains from these colleges will
+                          be able to vote
+                        </FormHelperText>
+                      </FormControl>
+                    </Grid>
+                  )}
                 </Grid>
               </CardContent>
             </Card>

@@ -19,7 +19,7 @@ import {
 import { signOut } from "firebase/auth";
 import { collection, getDocs } from "firebase/firestore";
 import { auth, db } from "../../firebase/config";
-import PollList from "./PollList";
+import PollList, { Poll } from "./PollList";
 import VoterPollResults from "../voter/VoterPollResults";
 import VotingHistory from "./VotingHistory";
 import {
@@ -32,37 +32,27 @@ import {
 } from "@mui/icons-material";
 import { useSearchParams } from "react-router-dom";
 
-interface Poll {
-  id: string;
-  title: string;
-  description: string;
-  startDate: Date;
-  endDate: Date;
-  isActive: boolean;
-}
-
 const VoterDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string>("");
   const [selectedPollId, setSelectedPollId] = useState<string>("");
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // fetch polls on mount
   useEffect(() => {
     fetchPolls();
-    const pollIdFromUrl = searchParams.get("pollId");
-    if (pollIdFromUrl) setSelectedPollId(pollIdFromUrl);
+    const pid = searchParams.get("pollId");
+    if (pid) setSelectedPollId(pid);
   }, []);
 
   const fetchPolls = async () => {
     setLoading(true);
     try {
-      const qs = await getDocs(collection(db, "polls"));
-      const data: Poll[] = qs.docs.map((doc) => {
-        const d = doc.data();
+      const snap = await getDocs(collection(db, "polls"));
+      const data: Poll[] = snap.docs.map((doc) => {
+        const d = doc.data() as any;
         return {
           id: doc.id,
           title: d.title,
@@ -70,40 +60,36 @@ const VoterDashboard: React.FC = () => {
           startDate:
             typeof d.startDate === "string"
               ? new Date(d.startDate)
-              : d.startDate?.toDate?.() || new Date(),
+              : d.startDate.toDate(),
           endDate:
             typeof d.endDate === "string"
               ? new Date(d.endDate)
-              : d.endDate?.toDate?.() || new Date(),
+              : d.endDate.toDate(),
           isActive: d.status === "active",
+          isPublic: d.isPublic,
+          allowedColleges: d.college ? { [d.college]: d.college } : null,
         };
       });
       setPolls(data);
-
-      // default selection
       if (data.length && !selectedPollId) {
         setSelectedPollId(data[0].id);
       }
     } catch (err: any) {
       console.error(err);
-      setError(`Failed to fetch polls: ${err.message || err}`);
+      setError(err.message || "Failed to fetch polls");
     } finally {
       setLoading(false);
     }
   };
 
   const now = new Date();
-
-  // Available = active OR upcoming OR ended ≤ 1 day ago
-  const availablePolls = polls.filter((p) => {
-    const endedPlusOne = new Date(p.endDate.getTime() + 86400000);
-    return p.isActive || p.startDate > now || endedPlusOne >= now;
+  const available = polls.filter((p) => {
+    const endPlusOne = new Date(p.endDate.getTime() + 86400000);
+    return p.isActive || p.startDate > now || endPlusOne >= now;
   });
+  const ended = polls.filter((p) => !p.isActive);
 
-  // Results = fully ended polls (you can keep or remove the 24-hour grace period here)
-  const endedPolls = polls.filter((p) => !p.isActive);
-
-  const handleTabChange = (_: React.SyntheticEvent, v: number) => {
+  const handleTabChange = (_: any, v: number) => {
     setActiveTab(v);
     if (v === 2 && selectedPollId) {
       setSearchParams({ pollId: selectedPollId });
@@ -115,15 +101,14 @@ const VoterDashboard: React.FC = () => {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-    } catch (err) {
-      console.error(err);
-    }
+    } catch {}
   };
 
   const handlePollChange = (e: SelectChangeEvent<string>) => {
-    const id = e.target.value;
-    setSelectedPollId(id);
-    if (activeTab === 2) setSearchParams({ pollId: id });
+    setSelectedPollId(e.target.value);
+    if (activeTab === 2) {
+      setSearchParams({ pollId: e.target.value });
+    }
   };
 
   const tabIcons = [
@@ -157,11 +142,6 @@ const VoterDashboard: React.FC = () => {
             color="error"
             startIcon={<ExitToAppIcon />}
             onClick={handleSignOut}
-            sx={{
-              bgcolor: "error.light",
-              "&:hover": { bgcolor: "error.main" },
-              fontWeight: "bold",
-            }}
           >
             Sign Out
           </Button>
@@ -220,16 +200,11 @@ const VoterDashboard: React.FC = () => {
         </Paper>
       ) : (
         <Box p={1}>
-          {/* Available Polls */}
-          {activeTab === 0 && <PollList polls={availablePolls} />}
-
-          {/* Voting History */}
+          {activeTab === 0 && <PollList polls={available} />}
           {activeTab === 1 && <VotingHistory />}
-
-          {/* Results */}
           {activeTab === 2 && (
             <Box mb={3}>
-              {endedPolls.length > 0 ? (
+              {ended.length > 0 ? (
                 <>
                   <Paper
                     elevation={1}
@@ -251,7 +226,7 @@ const VoterDashboard: React.FC = () => {
                         label="Poll"
                         onChange={handlePollChange}
                       >
-                        {endedPolls.map((p) => (
+                        {ended.map((p) => (
                           <MenuItem key={p.id} value={p.id}>
                             {p.title}
                           </MenuItem>
@@ -268,10 +243,7 @@ const VoterDashboard: React.FC = () => {
                   )}
                 </>
               ) : (
-                <Alert severity="info">
-                  No ended polls available. Results will appear once polls
-                  complete.
-                </Alert>
+                <Alert severity="info">No ended polls available.</Alert>
               )}
             </Box>
           )}
