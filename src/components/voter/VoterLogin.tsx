@@ -185,7 +185,8 @@ const VoterLogin: React.FC = () => {
   const sendUsernameEmail = async (email: string, college_name: string, name: string) => {
     try {
       const username = await generateUniqueUsername(name);
-  
+      console.log(`Generated username: ${username}`);
+      // EmailJS configuration
       const serviceId = "service_oaf1646"; // Replace with your EmailJS service ID
       const templateId = "template_lyj7rmk"; // Replace with your EmailJS template ID
       const publicKey = "z1LjV6uNRGIRUr8jW"; // Replace with your EmailJS public key
@@ -197,7 +198,7 @@ const VoterLogin: React.FC = () => {
         username: username,
       };
   
-      await emailjs.send(serviceId, templateId, templateParams, publicKey);
+      //await emailjs.send(serviceId, templateId, templateParams, publicKey);
       console.log(`Username email sent to ${email}`);
     } catch (error) {
       console.error("Error sending username email:", error);
