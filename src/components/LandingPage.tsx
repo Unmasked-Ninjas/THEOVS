@@ -77,15 +77,6 @@ const LandingPage: React.FC = () => {
               >
                 Login
               </Button>
-              <Button
-                size="large"
-                variant="outlined"
-                color="primary"
-                startIcon={<PersonAddIcon />}
-                onClick={() => navigate("/voter/register")}
-              >
-                Register
-              </Button>
             </CardActions>
           </Card>
         </Paper>

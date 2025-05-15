@@ -533,6 +533,17 @@ const VoterLogin: React.FC = () => {
                             required={!isLogin}
                           />
                         </Grid>
+                        <Grid item xs={12}>
+                          <TextField
+                            label="Email Address"
+                            variant="outlined"
+                            type="email"
+                            fullWidth
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                          />
+                        </Grid>
 
                         <Grid item xs={12}>
                           <FormControl fullWidth required>
