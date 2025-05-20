@@ -32,6 +32,7 @@ const AdminLayout: React.FC = () => {
     setDrawerOpen(!drawerOpen);
   };
 
+//changed Logout to work
   const handleLogout = async () => {
     try {
       await signOut(auth);
