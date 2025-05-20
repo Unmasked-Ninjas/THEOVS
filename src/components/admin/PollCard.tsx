@@ -15,6 +15,7 @@ interface PollCardProps {
   poll: Poll;
 }
 
+
 const PollCard: React.FC<PollCardProps> = ({ poll }) => {
   const navigate = useNavigate();
 
