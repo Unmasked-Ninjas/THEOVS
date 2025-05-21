@@ -22,10 +22,26 @@ export interface Poll {
   description: string;
   startDate: Date;
   endDate: Date;
-  isActive: boolean;
+  status: string;
   isPublic: boolean;
-  allowedColleges: Record<string, string> | null;
+  college?: string[]; // Array of colleges that can access this poll
+  totalVotes: number;
 }
+
+// Map of college names to their corresponding email domains
+const colleges: Record<string, string> = {
+  "Gmail College Kathmandu": "@gmail.com",
+  "Herald College Kathmandu": "@heraldcollege.edu.np",
+  "Islington College": "@islingtoncollege.edu.np",
+  "Biratnagar International College": "@bicnepal.edu.np",
+  "Informatics College Pokhara": "@icp.edu.np",
+  "Fishtail Mountain College": "@fishtailmountain.edu.np",
+  "Itahari International College": "@icc.edu.np",
+  "Apex College": "@apexcollege.edu.np",
+  "International School of Tourism and Hotel Management (IST)":
+    "@istcollege.edu.np",
+  "CG Institute of Management": "@cgim.edu.np",
+};
 
 interface PollListProps {
   polls: Poll[];
@@ -44,16 +60,41 @@ const PollList: React.FC<PollListProps> = ({ polls }) => {
   }, []);
 
   useEffect(() => {
-    if (!polls) {
+    if (!polls || polls.length === 0) {
       setFilteredPolls([]);
       return;
     }
-    // Remove domain-based filtering, use allowedColleges key (college name) instead
-    const userCollege = localStorage.getItem("userCollege"); // Optionally get from localStorage if you store it, or pass as prop/context
+
+    // Filter polls based on user email domain and poll visibility
     const accessible = polls.filter((poll) => {
-      if (poll.isPublic) return true;
-      if (!userCollege || !poll.allowedColleges) return false;
-      return Object.keys(poll.allowedColleges).includes(userCollege);
+      // Public polls are visible to everyone
+      if (poll.isPublic) {
+        return true;
+      }
+
+      // If not logged in, only show public polls
+      if (!userEmail) {
+        return false;
+      }
+
+      // If poll doesn't have college restrictions or college array is empty, make it visible to all logged-in users
+      if (!poll.college || poll.college.length === 0) {
+        return true;
+      }
+
+      // Check if user's email domain matches any of the allowed colleges
+      const userEmailLower = userEmail.toLowerCase();
+      for (const collegeName of poll.college) {
+        const collegeDomain = colleges[collegeName];
+        if (
+          collegeDomain &&
+          userEmailLower.endsWith(collegeDomain.toLowerCase())
+        ) {
+          return true;
+        }
+      }
+
+      return false;
     });
 
     setFilteredPolls(accessible);
@@ -75,19 +116,20 @@ const PollList: React.FC<PollListProps> = ({ polls }) => {
     return { label: "Ended", color: "error" };
   };
 
-  const isCurrentlyActive = (start: Date, end: Date) => {
-    const now = new Date();
-    return start <= now && end >= now;
+  const isCurrentlyActive = (status: string) => {
+    return status.toLowerCase() === "active";
   };
 
   const handleVoteClick = (pollId: string) => {
     navigate(`/vote/${pollId}`);
   };
 
-  const getCollegeNames = (poll: Poll) =>
-    poll.allowedColleges
-      ? Object.keys(poll.allowedColleges).join(", ")
-      : "Public";
+  const getCollegeNames = (poll: Poll) => {
+    if (poll.isPublic) return "Public";
+    if (!poll.college || poll.college.length === 0)
+      return "All registered users";
+    return poll.college.join(", ");
+  };
 
   if (filteredPolls.length === 0) {
     return (
@@ -95,7 +137,7 @@ const PollList: React.FC<PollListProps> = ({ polls }) => {
         <Typography variant="h6">No polls available.</Typography>
         {!userEmail && (
           <Alert severity="info" sx={{ mt: 2 }}>
-            Log in to view private polls.
+            Log in to view all polls.
           </Alert>
         )}
       </Box>
@@ -110,7 +152,9 @@ const PollList: React.FC<PollListProps> = ({ polls }) => {
       <Grid container spacing={3}>
         {filteredPolls.map((poll) => {
           const status = getPollStatus(poll.startDate, poll.endDate);
-          const isCollegeSpecific = !poll.isPublic && poll.allowedColleges;
+          const isCollegeSpecific =
+            !poll.isPublic && poll.college && poll.college.length > 0;
+
           return (
             <Grid item xs={12} sm={6} md={4} key={poll.id}>
               <Card
@@ -172,8 +216,10 @@ const PollList: React.FC<PollListProps> = ({ polls }) => {
 
                 <Box sx={{ p: 2, pt: 0 }}>
                   <Chip
-                    label={status.label}
-                    color={status.color as any}
+                    label={getPollStatus(poll.startDate, poll.endDate).label}
+                    color={
+                      getPollStatus(poll.startDate, poll.endDate).color as any
+                    }
                     size="small"
                   />
                 </Box>
@@ -183,9 +229,9 @@ const PollList: React.FC<PollListProps> = ({ polls }) => {
                     fullWidth
                     variant="contained"
                     onClick={() => handleVoteClick(poll.id)}
-                    disabled={!isCurrentlyActive(poll.startDate, poll.endDate)}
+                    disabled={!isCurrentlyActive(poll.status)}
                   >
-                    {isCurrentlyActive(poll.startDate, poll.endDate)
+                    {isCurrentlyActive(poll.status)
                       ? "Vote Now"
                       : status.label === "Ended"
                       ? "View Results"

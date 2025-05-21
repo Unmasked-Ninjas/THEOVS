@@ -32,7 +32,7 @@ import { Candidate, PollType } from "../../types/Poll";
 
 // College list
 const colleges: Record<string, string> = {
-  "Gmail college kathmandu": "@gmail.com",
+  "Gmail College Kathmandu": "@gmail.com",
   "Herald College Kathmandu": "@heraldcollege.edu.np",
   "Islington College": "@islingtoncollege.edu.np",
   "Biratnagar International College": "@bicnepal.edu.np",
@@ -47,8 +47,8 @@ const colleges: Record<string, string> = {
 
 const CreatePoll: React.FC = () => {
   const navigate = useNavigate();
-  const [title, setTitle] = useState<string>("");
-  const [description, setDescription] = useState<string>("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [candidates, setCandidates] = useState<Candidate[]>([
     { id: "1", name: "", description: "" },
     { id: "2", name: "", description: "" },
@@ -56,35 +56,35 @@ const CreatePoll: React.FC = () => {
   const [startDate, setStartDate] = useState<Date | null>(new Date());
   const [endDate, setEndDate] = useState<Date | null>(
     new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-  ); // Default 1 week
+  );
   const [pollType, setPollType] = useState<PollType>("single");
-  const [isPublic, setIsPublic] = useState<boolean>(true);
+  const [isPublic, setIsPublic] = useState(true);
   const [selectedColleges, setSelectedColleges] = useState<string[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<boolean>(false);
+  const [success, setSuccess] = useState(false);
 
-  const handlePollTypeChange = (event: SelectChangeEvent) => {
-    setPollType(event.target.value as PollType);
+  const handlePollTypeChange = (e: SelectChangeEvent) => {
+    setPollType(e.target.value as PollType);
   };
 
-  const handleVisibilityChange = (event: SelectChangeEvent) => {
-    setIsPublic(event.target.value === "public");
+  const handleVisibilityChange = (e: SelectChangeEvent) => {
+    const v = e.target.value;
+    setIsPublic(v === "public");
+    if (v === "public") setSelectedColleges([]);
   };
 
   const handleCollegeChange = (
-    event: SelectChangeEvent<typeof selectedColleges>
+    e: SelectChangeEvent<typeof selectedColleges>
   ) => {
-    const {
-      target: { value },
-    } = event;
+    const { value } = e.target;
     setSelectedColleges(typeof value === "string" ? value.split(",") : value);
   };
 
   const addCandidate = () => {
     setCandidates([
       ...candidates,
-      { id: `${candidates.length + 1}`, name: "", description: "" },
+      { id: `${Date.now()}`, name: "", description: "" },
     ]);
   };
 
@@ -93,7 +93,7 @@ const CreatePoll: React.FC = () => {
       setError("A poll must have at least two candidates");
       return;
     }
-    setCandidates(candidates.filter((candidate) => candidate.id !== id));
+    setCandidates(candidates.filter((c) => c.id !== id));
   };
 
   const updateCandidate = (
@@ -102,9 +102,7 @@ const CreatePoll: React.FC = () => {
     value: string
   ) => {
     setCandidates(
-      candidates.map((candidate) =>
-        candidate.id === id ? { ...candidate, [field]: value } : candidate
-      )
+      candidates.map((c) => (c.id === id ? { ...c, [field]: value } : c))
     );
   };
 
@@ -113,36 +111,27 @@ const CreatePoll: React.FC = () => {
       setError("Poll title is required");
       return false;
     }
-
     if (!startDate || !endDate) {
       setError("Start and end dates are required");
       return false;
     }
-
     if (endDate <= startDate) {
       setError("End date must be after start date");
       return false;
     }
-
-    const invalidCandidates = candidates.filter(
-      (candidate) => !candidate.name.trim()
-    );
-    if (invalidCandidates.length > 0) {
+    if (candidates.some((c) => !c.name.trim())) {
       setError("All candidates must have a name");
       return false;
     }
-
     if (!isPublic && selectedColleges.length === 0) {
-      setError("Please select at least one college for a private poll");
+      setError("Please select at least one college");
       return false;
     }
-
     return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!validateForm()) return;
 
     try {
@@ -155,15 +144,6 @@ const CreatePoll: React.FC = () => {
         return;
       }
 
-      // Create a map of selected college domains
-      const selectedCollegeDomains = selectedColleges.reduce(
-        (acc: Record<string, string>, collegeKey: string) => {
-          acc[collegeKey] = colleges[collegeKey];
-          return acc;
-        },
-        {}
-      );
-
       const newPoll = {
         title,
         description,
@@ -171,11 +151,12 @@ const CreatePoll: React.FC = () => {
           ...rest,
           votes: 0,
         })),
-        startDate: startDate?.toISOString(),
-        endDate: endDate?.toISOString(),
+        startDate: startDate!.toISOString(),
+        endDate: endDate!.toISOString(),
         pollType,
         isPublic,
-        allowedColleges: isPublic ? null : selectedCollegeDomains,
+        // store array of college-names just like EditPoll stores `college: string`
+        college: isPublic ? [] : selectedColleges,
         createdBy: userId,
         createdAt: serverTimestamp(),
         totalVotes: 0,
@@ -185,8 +166,8 @@ const CreatePoll: React.FC = () => {
       await addDoc(collection(db, "polls"), newPoll);
       setSuccess(true);
       setTimeout(() => navigate("/admin/dashboard"), 2000);
-    } catch (error) {
-      console.error("Error creating poll:", error);
+    } catch (err) {
+      console.error("Error creating poll:", err);
       setError("Failed to create poll. Please try again.");
     } finally {
       setLoading(false);
@@ -202,11 +183,11 @@ const CreatePoll: React.FC = () => {
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Container maxWidth="md">
         <Box my={4}>
-          <Typography variant="h4" component="h1" gutterBottom>
+          <Typography variant="h4" gutterBottom>
             Create New Poll
           </Typography>
-
           <form onSubmit={handleSubmit}>
+            {/* Basic Info */}
             <Card variant="outlined" sx={{ mb: 3 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -236,14 +217,10 @@ const CreatePoll: React.FC = () => {
               </CardContent>
             </Card>
 
+            {/* Candidates */}
             <Card variant="outlined" sx={{ mb: 3 }}>
               <CardContent>
-                <Box
-                  display="flex"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  mb={2}
-                >
+                <Box display="flex" justifyContent="space-between" mb={2}>
                   <Typography variant="h6">Candidates</Typography>
                   <Button
                     startIcon={<AddIcon />}
@@ -254,10 +231,9 @@ const CreatePoll: React.FC = () => {
                     Add Candidate
                   </Button>
                 </Box>
-
-                {candidates.map((candidate, index) => (
+                {candidates.map((c, i) => (
                   <Box
-                    key={candidate.id}
+                    key={c.id}
                     mb={2}
                     p={2}
                     bgcolor="#f9f9f9"
@@ -266,14 +242,14 @@ const CreatePoll: React.FC = () => {
                     <Grid container spacing={2} alignItems="center">
                       <Grid item xs={11}>
                         <Typography variant="subtitle2">
-                          Candidate {index + 1}
+                          Candidate {i + 1}
                         </Typography>
                       </Grid>
                       <Grid item xs={1} sx={{ textAlign: "right" }}>
                         <IconButton
-                          onClick={() => removeCandidate(candidate.id || "")}
                           size="small"
                           color="error"
+                          onClick={() => removeCandidate(c.id as string)}
                         >
                           <DeleteIcon />
                         </IconButton>
@@ -283,10 +259,10 @@ const CreatePoll: React.FC = () => {
                           label="Name"
                           fullWidth
                           required
-                          value={candidate.name}
+                          value={c.name}
                           onChange={(e) =>
                             updateCandidate(
-                              candidate.id || "",
+                              c.id as string,
                               "name",
                               e.target.value
                             )
@@ -297,10 +273,10 @@ const CreatePoll: React.FC = () => {
                         <TextField
                           label="Description (Optional)"
                           fullWidth
-                          value={candidate.description}
+                          value={c.description}
                           onChange={(e) =>
                             updateCandidate(
-                              candidate.id || "",
+                              c.id as string,
                               "description",
                               e.target.value
                             )
@@ -313,6 +289,7 @@ const CreatePoll: React.FC = () => {
               </CardContent>
             </Card>
 
+            {/* Settings */}
             <Card variant="outlined" sx={{ mb: 3 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -323,14 +300,14 @@ const CreatePoll: React.FC = () => {
                     <DateTimePicker
                       label="Start Date & Time"
                       value={startDate}
-                      onChange={(newValue) => setStartDate(newValue)}
+                      onChange={(dt) => setStartDate(dt)}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <DateTimePicker
                       label="End Date & Time"
                       value={endDate}
-                      onChange={(newValue) => setEndDate(newValue)}
+                      onChange={(dt) => setEndDate(dt)}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -347,10 +324,10 @@ const CreatePoll: React.FC = () => {
                       </Select>
                       <FormHelperText>
                         {pollType === "single"
-                          ? "Voters select one candidate only"
+                          ? "Select one candidate only"
                           : pollType === "multiple"
-                          ? "Voters can select multiple candidates"
-                          : "Voters rank candidates in order of preference"}
+                          ? "Can select multiple"
+                          : "Rank in order of preference"}
                       </FormHelperText>
                     </FormControl>
                   </Grid>
@@ -358,60 +335,45 @@ const CreatePoll: React.FC = () => {
                     <FormControl fullWidth>
                       <InputLabel>Visibility</InputLabel>
                       <Select
-                        value={isPublic ? "public" : "private"}
+                        value={isPublic ? "public" : "college"}
                         label="Visibility"
                         onChange={handleVisibilityChange}
                       >
                         <MenuItem value="public">Public</MenuItem>
-                        <MenuItem value="private">
-                          College-Specific (Restricted)
-                        </MenuItem>
+                        <MenuItem value="college">College Specific</MenuItem>
                       </Select>
                       <FormHelperText>
                         {isPublic
-                          ? "Anyone with the link can vote"
-                          : "Only students from selected colleges can access and vote"}
+                          ? "Anyone with link can vote"
+                          : "Only selected colleges can vote"}
                       </FormHelperText>
                     </FormControl>
                   </Grid>
-
                   {!isPublic && (
                     <Grid item xs={12}>
-                      <FormControl fullWidth>
-                        <InputLabel id="college-select-label">
-                          Select Colleges
-                        </InputLabel>
+                      <FormControl fullWidth required>
+                        <InputLabel>Select Colleges</InputLabel>
                         <Select
-                          labelId="college-select-label"
                           multiple
                           value={selectedColleges}
                           onChange={handleCollegeChange}
                           input={<OutlinedInput label="Select Colleges" />}
-                          renderValue={(selected) => selected.join(", ")}
-                          MenuProps={{
-                            PaperProps: {
-                              style: {
-                                maxHeight: 224,
-                                width: 250,
-                              },
-                            },
-                          }}
+                          renderValue={(sel) => (sel as string[]).join(", ")}
                         >
-                          {Object.keys(colleges).map((college) => (
-                            <MenuItem key={college} value={college}>
+                          {Object.keys(colleges).map((name) => (
+                            <MenuItem key={name} value={name}>
                               <Checkbox
-                                checked={selectedColleges.indexOf(college) > -1}
+                                checked={selectedColleges.includes(name)}
                               />
                               <ListItemText
-                                primary={college}
-                                secondary={colleges[college]}
+                                primary={name}
+                                secondary={colleges[name]}
                               />
                             </MenuItem>
                           ))}
                         </Select>
                         <FormHelperText>
-                          Only users with email domains from these colleges will
-                          be able to vote
+                          Only users from these colleges can vote
                         </FormHelperText>
                       </FormControl>
                     </Grid>
@@ -420,6 +382,7 @@ const CreatePoll: React.FC = () => {
               </CardContent>
             </Card>
 
+            {/* Actions */}
             <Box display="flex" justifyContent="flex-end" mt={3}>
               <Button
                 variant="outlined"
@@ -428,12 +391,7 @@ const CreatePoll: React.FC = () => {
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                disabled={loading}
-              >
+              <Button type="submit" variant="contained" disabled={loading}>
                 {loading ? "Creating..." : "Create Poll"}
               </Button>
             </Box>
@@ -445,22 +403,21 @@ const CreatePoll: React.FC = () => {
             onClose={handleCloseSnackbar}
           >
             <Alert
-              onClose={handleCloseSnackbar}
               severity="error"
+              onClose={handleCloseSnackbar}
               sx={{ width: "100%" }}
             >
               {error}
             </Alert>
           </Snackbar>
-
           <Snackbar
             open={success}
             autoHideDuration={2000}
             onClose={handleCloseSnackbar}
           >
             <Alert
-              onClose={handleCloseSnackbar}
               severity="success"
+              onClose={handleCloseSnackbar}
               sx={{ width: "100%" }}
             >
               Poll created successfully!

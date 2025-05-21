@@ -101,22 +101,39 @@ const VoterPollResults: React.FC = () => {
     );
   }
 
-  // Only allow viewing results if poll has ended
-  if (error || !poll || new Date() < new Date(poll.endDate)) {
+  // Only allow viewing results if poll has ended or if status isn't "active"
+  if (error || !poll) {
     return (
       <Container maxWidth="md">
         <Box my={4} textAlign="center">
           <Typography variant="h5" color="error" gutterBottom>
-            {error
-              ? error
-              : !poll
-              ? "Something went wrong"
-              : "Results are only available after the poll has ended."}
+            {error || "Something went wrong"}
           </Typography>
           <Button
             variant="contained"
             color="primary"
-            onClick={() => navigate("/admin/dashboard")}
+            onClick={() => navigate("/voter")}
+          >
+            Back to Dashboard
+          </Button>
+        </Box>
+      </Container>
+    );
+  }
+
+  // Allow viewing results if the poll's status is not active (ended)
+  // or if the current date is past the poll's end date
+  if (poll.status !== "ended" && new Date() < new Date(poll.endDate)) {
+    return (
+      <Container maxWidth="md">
+        <Box my={4} textAlign="center">
+          <Typography variant="h5" color="Black" gutterBottom>
+            Please select a poll to view its results{" "}
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => navigate("/voter")}
           >
             Back to Dashboard
           </Button>

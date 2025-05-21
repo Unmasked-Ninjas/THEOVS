@@ -261,6 +261,7 @@ const VoterLogin: React.FC = () => {
         const otp = generateOtp();
         setGeneratedOtp(otp);
         await sendOtp(userEmail, otp);
+        setStep("otp"); // Make sure this line is executed
 
         // Redirect to OTP verification step
         setStep("otp");
@@ -387,6 +388,8 @@ const VoterLogin: React.FC = () => {
       setLoading(false);
     }
   };
+
+  console.log("Current step:", step); // Add this near the beginning of your render function
 
   return (
     <Container maxWidth="sm">

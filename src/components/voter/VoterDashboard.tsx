@@ -80,7 +80,16 @@ const VoterDashboard: React.FC = () => {
               : d.endDate.toDate(),
           isActive: d.status === "active",
           isPublic: d.isPublic,
-          allowedColleges: d.college ? { [d.college]: d.college } : null,
+          status: d.status,
+          totalVotes: d.totalVotes ?? 0,
+          candidates: d.candidates ?? [],
+          pollType: d.pollType,
+          createdBy: d.createdBy,
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt,
+          college: d.college,
+          active: d.active,
+          questions: d.questions,
         };
       });
       setPolls(data);
@@ -96,24 +105,9 @@ const VoterDashboard: React.FC = () => {
   };
 
   const now = new Date();
-  const available = polls.filter((p) => {
-    const endPlusOne = new Date(p.endDate.getTime() + 86400000);
-    // Show public polls or college-specific polls only if userCollege matches
-    const isAllowed =
-      p.isPublic ||
-      (!!userCollege &&
-        p.allowedColleges &&
-        Object.keys(p.allowedColleges).includes(userCollege));
-    return isAllowed && (p.isActive || p.startDate > now || endPlusOne >= now);
-  });
-  const ended = polls.filter((p) => {
-    const isAllowed =
-      p.isPublic ||
-      (!!userCollege &&
-        p.allowedColleges &&
-        Object.keys(p.allowedColleges).includes(userCollege));
-    return isAllowed && !p.isActive;
-  });
+  // Remove filtering logic, just pass all polls to PollList
+  // const available = polls.filter((p) => { ... });
+  // const ended = polls.filter((p) => { ... });
 
   const handleTabChange = (_: any, v: number) => {
     setActiveTab(v);
@@ -131,10 +125,11 @@ const VoterDashboard: React.FC = () => {
   };
 
   const handlePollChange = (e: SelectChangeEvent<string>) => {
-    setSelectedPollId(e.target.value);
-    if (activeTab === 2) {
-      setSearchParams({ pollId: e.target.value });
-    }
+    const pollId = e.target.value;
+    setSelectedPollId(pollId);
+    // Always update search params immediately when poll is selected
+    setSearchParams({ pollId: pollId });
+    console.log("Selected poll ID:", pollId); // Debug log
   };
 
   const tabIcons = [
@@ -226,11 +221,25 @@ const VoterDashboard: React.FC = () => {
         </Paper>
       ) : (
         <Box p={1}>
-          {activeTab === 0 && <PollList polls={available} />}
+          {activeTab === 0 && (
+            <PollList
+              polls={polls.filter((p) => {
+                const now = new Date();
+                const start = new Date(p.startDate);
+                const end = new Date(p.endDate);
+                // Show all polls: upcoming, active, and ended
+                return true;
+              })}
+            />
+          )}
           {activeTab === 1 && <VotingHistory />}
           {activeTab === 2 && (
             <Box mb={3}>
-              {ended.length > 0 ? (
+              {polls.filter((p) => {
+                const now = new Date();
+                const end = new Date(p.endDate);
+                return end < now || p.status !== "active";
+              }).length > 0 ? (
                 <>
                   <Paper
                     elevation={1}
@@ -248,21 +257,28 @@ const VoterDashboard: React.FC = () => {
                       <InputLabel id="poll-select-label">Poll</InputLabel>
                       <Select
                         labelId="poll-select-label"
-                        value={selectedPollId}
+                        value={selectedPollId || ""}
                         label="Poll"
                         onChange={handlePollChange}
                       >
-                        {ended.map((p) => (
-                          <MenuItem key={p.id} value={p.id}>
-                            {p.title}
-                          </MenuItem>
-                        ))}
+                        {polls
+                          .filter((p) => {
+                            const now = new Date();
+                            const end = new Date(p.endDate);
+                            return end < now || p.status !== "active";
+                          })
+                          .map((p) => (
+                            <MenuItem key={p.id} value={p.id}>
+                              {p.title}
+                            </MenuItem>
+                          ))}
                       </Select>
                     </FormControl>
                   </Paper>
-                  {selectedPollId ? (
-                    <VoterPollResults />
-                  ) : (
+                  {selectedPollId && (
+                    <VoterPollResults key={selectedPollId} /> // Add key to force re-rendering
+                  )}
+                  {!selectedPollId && (
                     <Alert severity="info">
                       Please select a poll to view results
                     </Alert>

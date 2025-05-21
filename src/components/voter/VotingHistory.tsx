@@ -61,48 +61,59 @@ const VotingHistory: React.FC = () => {
         const records: VoteRecord[] = [];
 
         for (const voteDoc of snapshot.docs) {
-          const data = voteDoc.data() as VoteData;
+          try {
+            const data = voteDoc.data() as VoteData;
+            console.log("Vote data:", data); // Debug log
 
-          // Determine poll reference (handle string, number, or DocumentReference)
-          let pollRef: DocumentReference;
-          if (
-            typeof data.pollId === "string" ||
-            typeof data.pollId === "number"
-          ) {
-            pollRef = doc(db, "polls", String(data.pollId));
-          } else {
-            pollRef = data.pollId;
+            // Get poll information
+            let pollId = "";
+            if (typeof data.pollId === "string") {
+              pollId = data.pollId;
+            } else if (typeof data.pollId === "object" && data.pollId.id) {
+              // It's a DocumentReference
+              pollId = data.pollId.id;
+            }
+
+            if (!pollId) {
+              console.error("Invalid poll ID:", data.pollId);
+              continue;
+            }
+
+            const pollRef = doc(db, "polls", pollId);
+            const pollSnap = await getDoc(pollRef);
+
+            if (!pollSnap.exists()) {
+              console.log("Poll not found:", pollId);
+              continue;
+            }
+
+            const pollData = pollSnap.data();
+
+            // Find candidate info directly from the poll data
+            const candidate = pollData.candidates?.find(
+              (c: any) =>
+                c.id === data.candidateId ||
+                (typeof data.candidateId === "object" &&
+                  data.candidateId.id === c.id)
+            );
+
+            const candidateName = candidate?.name || "Unknown Candidate";
+
+            records.push({
+              id: voteDoc.id,
+              pollId: pollId,
+              pollTitle: pollData?.title ?? "Unknown Poll",
+              candidateId:
+                typeof data.candidateId === "string"
+                  ? data.candidateId
+                  : (data.candidateId as DocumentReference)?.id || "unknown",
+              candidateName,
+              timestamp: data.timestamp.toDate(),
+            });
+          } catch (err) {
+            console.error("Error processing vote document:", err);
+            // Continue with next vote record instead of failing completely
           }
-
-          // Determine candidate reference
-          let candidateRef: DocumentReference;
-          if (
-            typeof data.candidateId === "string" ||
-            typeof data.candidateId === "number"
-          ) {
-            candidateRef = doc(db, "candidates", String(data.candidateId));
-          } else {
-            candidateRef = data.candidateId;
-          }
-
-          // Fetch poll and candidate details in parallel
-          const [pollSnap, candidateSnap] = await Promise.all([
-            getDoc(pollRef),
-            getDoc(candidateRef),
-          ]);
-          const pollData = pollSnap.data();
-          const candidateData = candidateSnap.data();
-
-          records.push({
-            id: voteDoc.id,
-            pollId: pollRef.id,
-            pollTitle: pollData?.title ?? "Unknown Poll",
-            candidateId: candidateRef.id,
-            candidateName: candidateData?.name ?? "Unknown Candidate",
-            timestamp: data.timestamp.toDate(),
-          });
-          console.log("Polldata", pollData);
-          console.log("Candidatedata", candidateData);
         }
 
         // Sort by most recent first

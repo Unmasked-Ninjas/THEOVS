@@ -17,6 +17,9 @@ import {
   SelectChangeEvent,
   Alert,
   Snackbar,
+  Checkbox,
+  ListItemText,
+  OutlinedInput,
   CircularProgress,
 } from "@mui/material";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
@@ -28,8 +31,9 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db, auth } from "../../firebase/config";
 import { Candidate, Poll, PollType } from "../../types/Poll";
 
+// College list
 const colleges: Record<string, string> = {
-  "Gmail college kathmandu": "@gmail.com",
+  "Gmail College Kathmandu": "@gmail.com",
   "Herald College Kathmandu": "@heraldcollege.edu.np",
   "Islington College": "@islingtoncollege.edu.np",
   "Biratnagar International College": "@bicnepal.edu.np",
@@ -45,143 +49,112 @@ const colleges: Record<string, string> = {
 const EditPoll: React.FC = () => {
   const { pollId } = useParams<{ pollId: string }>();
   const navigate = useNavigate();
+
   const [poll, setPoll] = useState<Poll | null>(null);
-  const [title, setTitle] = useState<string>("");
-  const [description, setDescription] = useState<string>("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [pollType, setPollType] = useState<PollType>("single");
-  const [isPublic, setIsPublic] = useState<boolean>(true);
-  const [college, setCollege] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(true);
-  const [saving, setSaving] = useState<boolean>(false);
+  const [isPublic, setIsPublic] = useState(true);
+  const [selectedColleges, setSelectedColleges] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<boolean>(false);
+  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    const fetchPollData = async () => {
+    const fetchPoll = async () => {
+      if (!pollId) return setLoading(false);
+
       try {
-        if (!pollId) {
-          setError("Poll ID is missing");
-          setLoading(false);
-          return;
+        const ref = doc(db, "polls", pollId);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) throw new Error("Poll not found");
+
+        const data = { id: snap.id, ...snap.data() } as Poll;
+
+        if (data.createdBy !== auth.currentUser?.uid) {
+          throw new Error("No permission to edit");
+        }
+        if (new Date() > new Date(data.endDate)) {
+          throw new Error("Poll has ended");
         }
 
-        const pollRef = doc(db, "polls", pollId);
-        const pollDoc = await getDoc(pollRef);
-
-        if (!pollDoc.exists()) {
-          setError("Poll not found");
-          setLoading(false);
-          return;
-        }
-
-        const pollData = { id: pollDoc.id, ...pollDoc.data() } as Poll;
-
-        // Check if user is the poll creator
-        if (pollData.createdBy !== auth.currentUser?.uid) {
-          setError("You do not have permission to edit this poll");
-          setLoading(false);
-          return;
-        }
-
-        // Check if poll is already closed
-        if (new Date() > new Date(pollData.endDate)) {
-          setError("This poll has ended and cannot be edited");
-          setLoading(false);
-          return;
-        }
-
-        setPoll(pollData);
-        setTitle(pollData.title);
-        setDescription(pollData.description || "");
-        // Add temporary IDs to candidates for editing
+        setPoll(data);
+        setTitle(data.title);
+        setDescription(data.description || "");
         setCandidates(
-          pollData.candidates.map((candidate, index) => ({
-            id: `${index + 1}`,
-            ...candidate,
-          }))
+          data.candidates.map((c, i) => ({ id: `${i + 1}`, ...c }))
         );
-        setStartDate(new Date(pollData.startDate));
-        setEndDate(new Date(pollData.endDate));
-        setPollType(pollData.pollType || "single");
-        setIsPublic(pollData.isPublic !== false); // Default to true if not specified
-        setCollege(pollData.college || ""); // Set college if present
-
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching poll data:", error);
-        setError("Failed to load poll data");
+        setStartDate(new Date(data.startDate));
+        setEndDate(new Date(data.endDate));
+        setPollType(data.pollType);
+        setIsPublic(data.isPublic !== false);
+        // initialize selectedColleges from existing poll.college array
+        setSelectedColleges(Array.isArray(data.college) ? data.college : []);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
         setLoading(false);
       }
     };
 
-    fetchPollData();
+    fetchPoll();
   }, [pollId]);
 
-  const handlePollTypeChange = (event: SelectChangeEvent) => {
-    setPollType(event.target.value as PollType);
+  const handlePollTypeChange = (e: SelectChangeEvent) =>
+    setPollType(e.target.value as PollType);
+
+  const handleVisibilityChange = (e: SelectChangeEvent) => {
+    const v = e.target.value;
+    setIsPublic(v === "public");
+    if (v === "public") setSelectedColleges([]);
   };
 
-  const handleVisibilityChange = (event: SelectChangeEvent) => {
-    const value = event.target.value;
-    setIsPublic(value === "public");
-    if (value === "public") setCollege("");
+  const handleCollegeChange = (
+    e: SelectChangeEvent<typeof selectedColleges>
+  ) => {
+    const { value } = e.target;
+    setSelectedColleges(typeof value === "string" ? value.split(",") : value);
   };
 
-  const handleCollegeChange = (event: SelectChangeEvent) => {
-    setCollege(event.target.value as string);
-  };
-
-  const addCandidate = () => {
+  const addCandidate = () =>
     setCandidates([
       ...candidates,
       { id: `${Date.now()}`, name: "", description: "" },
     ]);
-  };
 
   const removeCandidate = (id: string) => {
     if (candidates.length <= 2) {
-      setError("A poll must have at least two candidates");
-      return;
+      return setError("At least two candidates required");
     }
-
-    // Check if candidate has votes
-    const candidate = candidates.find((c) => c.id === id);
-    if (candidate && candidate.votes && candidate.votes > 0) {
-      setError("Cannot remove candidates that already have votes");
-      return;
+    const c = candidates.find((c) => c.id === id);
+    if (c?.votes && c.votes > 0) {
+      return setError("Cannot remove candidate with votes");
     }
-
-    setCandidates(candidates.filter((candidate) => candidate.id !== id));
+    setCandidates(candidates.filter((c) => c.id !== id));
   };
 
-  const updateCandidate = (
-    id: string,
-    field: keyof Candidate,
-    value: string
-  ) => {
+  const updateCandidate = (id: string, field: keyof Candidate, val: string) =>
     setCandidates(
-      candidates.map((candidate) =>
-        candidate.id === id ? { ...candidate, [field]: value } : candidate
-      )
+      candidates.map((c) => (c.id === id ? { ...c, [field]: val } : c))
     );
-  };
 
-  const validateForm = (): boolean => {
+  const validate = (): boolean => {
     if (!title.trim()) {
-      setError("Poll title is required");
+      setError("Title is required");
       return false;
     }
 
     if (!startDate || !endDate) {
-      setError("Start and end dates are required");
+      setError("Start and end dates required");
       return false;
     }
 
     if (endDate <= startDate) {
-      setError("End date must be after start date");
+      setError("End date must follow start date");
       return false;
     }
 
@@ -190,71 +163,54 @@ const EditPoll: React.FC = () => {
       return false;
     }
 
-    const invalidCandidates = candidates.filter(
-      (candidate) => !candidate.name.trim()
-    );
-    if (invalidCandidates.length > 0) {
-      setError("All candidates must have a name");
+    if (candidates.some((c) => !c.name.trim())) {
+      setError("All candidates need a name");
       return false;
     }
 
-    if (!isPublic && !college) {
-      setError("Please select a college for college specific polls");
+    if (!isPublic && selectedColleges.length === 0) {
+      setError("Select at least one college");
       return false;
     }
 
+    // clear any existing error
+    setError(null);
     return true;
   };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm() || !pollId) return;
+    if (!validate() || !pollId) return;
 
     try {
       setSaving(true);
       setError(null);
 
-      // Prepare candidate data, preserving votes
       const updatedCandidates = candidates.map(({ id, ...rest }) => {
-        // Find the original candidate (if exists) to preserve vote count
-        const originalCandidate = poll?.candidates.find(
-          (c, index) => index === parseInt(id as string) - 1
-        );
-        return {
-          ...rest,
-          votes: originalCandidate?.votes || 0,
-        };
+        const orig = poll?.candidates[parseInt(id as string, 10) - 1];
+        return { ...rest, votes: orig?.votes || 0 };
       });
 
       const updatedPoll = {
         title,
         description,
         candidates: updatedCandidates,
-        startDate: startDate?.toISOString(),
-        endDate: endDate?.toISOString(),
+        startDate: startDate!.toISOString(),
+        endDate: endDate!.toISOString(),
         pollType,
         isPublic,
-        college: isPublic ? "" : college,
+        college: isPublic ? [] : selectedColleges,
         updatedAt: new Date().toISOString(),
       };
 
-      const pollRef = doc(db, "polls", pollId);
-      await updateDoc(pollRef, updatedPoll);
-
+      await updateDoc(doc(db, "polls", pollId), updatedPoll);
       setSuccess(true);
       setTimeout(() => navigate("/admin/dashboard"), 2000);
-    } catch (error) {
-      console.error("Error updating poll:", error);
-      setError("Failed to update poll. Please try again.");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to save changes");
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleCloseSnackbar = () => {
-    setError(null);
-    setSuccess(false);
   };
 
   if (loading) {
@@ -263,29 +219,10 @@ const EditPoll: React.FC = () => {
         display="flex"
         justifyContent="center"
         alignItems="center"
-        minHeight="80vh"
+        minHeight="60vh"
       >
         <CircularProgress />
       </Box>
-    );
-  }
-
-  if (error && !poll) {
-    return (
-      <Container maxWidth="md">
-        <Box my={4} textAlign="center">
-          <Typography variant="h5" color="error" gutterBottom>
-            {error}
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => navigate("/admin/dashboard")}
-          >
-            Back to Dashboard
-          </Button>
-        </Box>
-      </Container>
     );
   }
 
@@ -293,17 +230,16 @@ const EditPoll: React.FC = () => {
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Container maxWidth="md">
         <Box my={4}>
-          <Typography variant="h4" component="h1" gutterBottom>
+          <Typography variant="h4" gutterBottom>
             Edit Poll
           </Typography>
 
           <form onSubmit={handleSubmit}>
+            {/* Basic Info */}
             <Card variant="outlined" sx={{ mb: 3 }}>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Basic Information
-                </Typography>
-                <Grid container spacing={3}>
+                <Typography variant="h6">Basic Information</Typography>
+                <Grid container spacing={3} mt={1}>
                   <Grid item xs={12}>
                     <TextField
                       label="Poll Title"
@@ -327,50 +263,40 @@ const EditPoll: React.FC = () => {
               </CardContent>
             </Card>
 
+            {/* Candidates */}
             <Card variant="outlined" sx={{ mb: 3 }}>
               <CardContent>
-                <Box
-                  display="flex"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  mb={2}
-                >
+                <Box display="flex" justifyContent="space-between" mb={2}>
                   <Typography variant="h6">Candidates</Typography>
                   <Button
                     startIcon={<AddIcon />}
                     onClick={addCandidate}
-                    variant="outlined"
                     size="small"
                   >
                     Add Candidate
                   </Button>
                 </Box>
-
-                {candidates.map((candidate, index) => (
+                {candidates.map((c, i) => (
                   <Box
-                    key={candidate.id}
+                    key={c.id}
                     mb={2}
                     p={2}
                     bgcolor="#f9f9f9"
                     borderRadius={1}
                   >
                     <Grid container spacing={2} alignItems="center">
-                      <Grid item xs={10} sm={11}>
+                      <Grid item xs={10}>
                         <Typography variant="subtitle2">
-                          Candidate {index + 1}
-                          {candidate.votes &&
-                            candidate.votes > 0 &&
-                            ` (${candidate.votes} votes)`}
+                          {`Candidate ${i + 1}`}
+                          {c.votes ? ` (${c.votes} votes)` : ""}
                         </Typography>
                       </Grid>
-                      <Grid item xs={2} sm={1} sx={{ textAlign: "right" }}>
+                      <Grid item xs={2} textAlign="right">
                         <IconButton
-                          onClick={() =>
-                            removeCandidate(candidate.id as string)
-                          }
                           size="small"
                           color="error"
-                          disabled={!!(candidate.votes && candidate.votes > 0)}
+                          disabled={!!c.votes}
+                          onClick={() => removeCandidate(c.id || "")}
                         >
                           <DeleteIcon />
                         </IconButton>
@@ -380,13 +306,9 @@ const EditPoll: React.FC = () => {
                           label="Name"
                           fullWidth
                           required
-                          value={candidate.name}
+                          value={c.name}
                           onChange={(e) =>
-                            updateCandidate(
-                              candidate.id as string,
-                              "name",
-                              e.target.value
-                            )
+                            updateCandidate(c.id || "", "name", e.target.value)
                           }
                         />
                       </Grid>
@@ -394,10 +316,10 @@ const EditPoll: React.FC = () => {
                         <TextField
                           label="Description (Optional)"
                           fullWidth
-                          value={candidate.description || ""}
+                          value={c.description}
                           onChange={(e) =>
                             updateCandidate(
-                              candidate.id as string,
+                              c.id || "",
                               "description",
                               e.target.value
                             )
@@ -410,30 +332,24 @@ const EditPoll: React.FC = () => {
               </CardContent>
             </Card>
 
+            {/* Settings */}
             <Card variant="outlined" sx={{ mb: 3 }}>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Poll Settings
-                </Typography>
-                <Grid container spacing={3}>
+                <Typography variant="h6">Poll Settings</Typography>
+                <Grid container spacing={3} mt={1}>
                   <Grid item xs={12} sm={6}>
                     <DateTimePicker
                       label="Start Date & Time"
                       value={startDate}
-                      onChange={(newValue) => setStartDate(newValue)}
-                      disabled={!!(poll?.totalVotes && poll.totalVotes > 0)}
+                      onChange={(dt) => setStartDate(dt)}
+                      disabled={!!poll?.totalVotes}
                     />
-                    {poll?.totalVotes && poll.totalVotes > 0 && (
-                      <FormHelperText>
-                        Cannot change start date after voting has begun
-                      </FormHelperText>
-                    )}
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <DateTimePicker
                       label="End Date & Time"
                       value={endDate}
-                      onChange={(newValue) => setEndDate(newValue)}
+                      onChange={(dt) => setEndDate(dt)}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -443,20 +359,18 @@ const EditPoll: React.FC = () => {
                         value={pollType}
                         label="Voting Type"
                         onChange={handlePollTypeChange}
-                        disabled={!!(poll?.totalVotes && poll.totalVotes > 0)}
+                        disabled={!!poll?.totalVotes}
                       >
                         <MenuItem value="single">Single Choice</MenuItem>
                         <MenuItem value="multiple">Multiple Choice</MenuItem>
                         <MenuItem value="ranked">Ranked Choice</MenuItem>
                       </Select>
                       <FormHelperText>
-                        {poll?.totalVotes && poll.totalVotes > 0
-                          ? "Cannot change voting type after voting has begun"
-                          : pollType === "single"
-                          ? "Voters select one candidate only"
+                        {pollType === "single"
+                          ? "One choice only"
                           : pollType === "multiple"
-                          ? "Voters can select multiple candidates"
-                          : "Voters rank candidates in order of preference"}
+                          ? "Select multiple"
+                          : "Rank preferences"}
                       </FormHelperText>
                     </FormControl>
                   </Grid>
@@ -473,28 +387,41 @@ const EditPoll: React.FC = () => {
                       </Select>
                       <FormHelperText>
                         {isPublic
-                          ? "Anyone with the link can vote"
-                          : "Only users from the selected college can vote"}
+                          ? "Anyone with link"
+                          : "Restricted to selected colleges"}
                       </FormHelperText>
                     </FormControl>
                   </Grid>
                   {!isPublic && (
-                    <Grid item xs={12} sm={6}>
+                    <Grid item xs={12}>
                       <FormControl fullWidth required>
-                        <InputLabel>Choose College</InputLabel>
+                        <InputLabel>Select Colleges</InputLabel>
                         <Select
-                          value={college}
-                          label="Choose College"
+                          multiple
+                          value={selectedColleges}
                           onChange={handleCollegeChange}
+                          input={<OutlinedInput label="Select Colleges" />}
+                          renderValue={(vals) => (vals as string[]).join(", ")}
+                          MenuProps={{
+                            PaperProps: {
+                              style: { maxHeight: 224, width: 250 },
+                            },
+                          }}
                         >
-                          {Object.keys(colleges).map((collegeName) => (
-                            <MenuItem key={collegeName} value={collegeName}>
-                              {collegeName}
+                          {Object.keys(colleges).map((name) => (
+                            <MenuItem key={name} value={name}>
+                              <Checkbox
+                                checked={selectedColleges.includes(name)}
+                              />
+                              <ListItemText
+                                primary={name}
+                                secondary={colleges[name]}
+                              />
                             </MenuItem>
                           ))}
                         </Select>
                         <FormHelperText>
-                          Only users from this college can vote
+                          Only users from these colleges can vote
                         </FormHelperText>
                       </FormControl>
                     </Grid>
@@ -503,6 +430,7 @@ const EditPoll: React.FC = () => {
               </CardContent>
             </Card>
 
+            {/* Actions */}
             <Box display="flex" justifyContent="flex-end" mt={3}>
               <Button
                 variant="outlined"
@@ -511,12 +439,7 @@ const EditPoll: React.FC = () => {
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                disabled={saving}
-              >
+              <Button type="submit" variant="contained" disabled={saving}>
                 {saving ? "Saving..." : "Save Changes"}
               </Button>
             </Box>
@@ -525,25 +448,24 @@ const EditPoll: React.FC = () => {
           <Snackbar
             open={!!error}
             autoHideDuration={6000}
-            onClose={handleCloseSnackbar}
+            onClose={() => setError(null)}
           >
             <Alert
-              onClose={handleCloseSnackbar}
               severity="error"
+              onClose={() => setError(null)}
               sx={{ width: "100%" }}
             >
               {error}
             </Alert>
           </Snackbar>
-
           <Snackbar
             open={success}
             autoHideDuration={2000}
-            onClose={handleCloseSnackbar}
+            onClose={() => setSuccess(false)}
           >
             <Alert
-              onClose={handleCloseSnackbar}
               severity="success"
+              onClose={() => setSuccess(false)}
               sx={{ width: "100%" }}
             >
               Poll updated successfully!
