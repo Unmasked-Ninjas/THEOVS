@@ -31,6 +31,7 @@ import {
   Assessment as AssessmentIcon,
 } from "@mui/icons-material";
 import { useSearchParams } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
 
 const VoterDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
@@ -38,13 +39,25 @@ const VoterDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [selectedPollId, setSelectedPollId] = useState<string>("");
+  const [userCollege, setUserCollege] = useState<string | null>(null);
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
+    // Fetch user college info after login
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const usersSnap = await getDocs(collection(db, "users"));
+        const userDoc = usersSnap.docs.find(
+          (doc) => doc.data().email === user.email
+        );
+        setUserCollege(userDoc?.data().college || null);
+      }
+    });
     fetchPolls();
     const pid = searchParams.get("pollId");
     if (pid) setSelectedPollId(pid);
+    return () => unsubscribe();
   }, []);
 
   const fetchPolls = async () => {
@@ -85,9 +98,22 @@ const VoterDashboard: React.FC = () => {
   const now = new Date();
   const available = polls.filter((p) => {
     const endPlusOne = new Date(p.endDate.getTime() + 86400000);
-    return p.isActive || p.startDate > now || endPlusOne >= now;
+    // Show public polls or college-specific polls only if userCollege matches
+    const isAllowed =
+      p.isPublic ||
+      (!!userCollege &&
+        p.allowedColleges &&
+        Object.keys(p.allowedColleges).includes(userCollege));
+    return isAllowed && (p.isActive || p.startDate > now || endPlusOne >= now);
   });
-  const ended = polls.filter((p) => !p.isActive);
+  const ended = polls.filter((p) => {
+    const isAllowed =
+      p.isPublic ||
+      (!!userCollege &&
+        p.allowedColleges &&
+        Object.keys(p.allowedColleges).includes(userCollege));
+    return isAllowed && !p.isActive;
+  });
 
   const handleTabChange = (_: any, v: number) => {
     setActiveTab(v);

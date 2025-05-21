@@ -101,12 +101,17 @@ const VoterPollResults: React.FC = () => {
     );
   }
 
-  if (error || !poll) {
+  // Only allow viewing results if poll has ended
+  if (error || !poll || new Date() < new Date(poll.endDate)) {
     return (
       <Container maxWidth="md">
         <Box my={4} textAlign="center">
           <Typography variant="h5" color="error" gutterBottom>
-            {error || "Something went wrong"}
+            {error
+              ? error
+              : !poll
+              ? "Something went wrong"
+              : "Results are only available after the poll has ended."}
           </Typography>
           <Button
             variant="contained"

@@ -161,9 +161,9 @@ const VoterLogin: React.FC = () => {
     setIsOtpExpired(false); // Reset OTP expiration status
 
     // EmailJS configuration
-    const serviceId = "service_oaf1646"; // Replace with your EmailJS service ID
-    const templateId = "template_9xjtx7d"; // Replace with your EmailJS template ID
-    const publicKey = "z1LjV6uNRGIRUr8jW"; // Replace with your EmailJS public key
+    const serviceId = process.env.REACT_APP_EMAILJS_SERVICE_ID || "";
+    const templateId = process.env.REACT_APP_OTP_TEMPLATE_ID || "";
+    const publicKey = process.env.REACT_APP_EMAILJS_PUBLIC_KEY || "";
 
     const templateParams = {
       passcode: otp, // Generated OTP
@@ -207,9 +207,9 @@ const VoterLogin: React.FC = () => {
     username: string // Pass the generated username as a parameter
   ) => {
     try {
-      const serviceId = "service_oaf1646"; // Replace with your EmailJS service ID
-      const templateId = "template_lyj7rmk"; // Replace with your EmailJS template ID
-      const publicKey = "z1LjV6uNRGIRUr8jW"; // Replace with your EmailJS public key
+      const serviceId = process.env.REACT_APP_EMAILJS_SERVICE_ID || "";
+      const templateId = process.env.REACT_APP_USERNAME_TEMPLATE_ID || "";
+      const publicKey = process.env.REACT_APP_EMAILJS_PUBLIC_KEY || "";
 
       const templateParams = {
         email: email,

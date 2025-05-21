@@ -48,16 +48,12 @@ const PollList: React.FC<PollListProps> = ({ polls }) => {
       setFilteredPolls([]);
       return;
     }
-    const userDomain = userEmail
-      ? userEmail.substring(userEmail.lastIndexOf("@"))
-      : null;
-
+    // Remove domain-based filtering, use allowedColleges key (college name) instead
+    const userCollege = localStorage.getItem("userCollege"); // Optionally get from localStorage if you store it, or pass as prop/context
     const accessible = polls.filter((poll) => {
       if (poll.isPublic) return true;
-      if (!userDomain || !poll.allowedColleges) return false;
-      return Object.values(poll.allowedColleges)
-        .map((d) => d.toLowerCase())
-        .includes(userDomain.toLowerCase());
+      if (!userCollege || !poll.allowedColleges) return false;
+      return Object.keys(poll.allowedColleges).includes(userCollege);
     });
 
     setFilteredPolls(accessible);

@@ -24,4 +24,5 @@ export interface Poll {
   updatedAt?: string;
   totalVotes: number;
   status: 'active' | 'ended';
+  college?: string;
 }

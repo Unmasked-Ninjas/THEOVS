@@ -28,6 +28,20 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db, auth } from "../../firebase/config";
 import { Candidate, Poll, PollType } from "../../types/Poll";
 
+const colleges: Record<string, string> = {
+  "Gmail college kathmandu": "@gmail.com",
+  "Herald College Kathmandu": "@heraldcollege.edu.np",
+  "Islington College": "@islingtoncollege.edu.np",
+  "Biratnagar International College": "@bicnepal.edu.np",
+  "Informatics College Pokhara": "@icp.edu.np",
+  "Fishtail Mountain College": "@fishtailmountain.edu.np",
+  "Itahari International College": "@icc.edu.np",
+  "Apex College": "@apexcollege.edu.np",
+  "International School of Tourism and Hotel Management (IST)":
+    "@istcollege.edu.np",
+  "CG Institute of Management": "@cgim.edu.np",
+};
+
 const EditPoll: React.FC = () => {
   const { pollId } = useParams<{ pollId: string }>();
   const navigate = useNavigate();
@@ -39,6 +53,7 @@ const EditPoll: React.FC = () => {
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [pollType, setPollType] = useState<PollType>("single");
   const [isPublic, setIsPublic] = useState<boolean>(true);
+  const [college, setCollege] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +107,7 @@ const EditPoll: React.FC = () => {
         setEndDate(new Date(pollData.endDate));
         setPollType(pollData.pollType || "single");
         setIsPublic(pollData.isPublic !== false); // Default to true if not specified
+        setCollege(pollData.college || ""); // Set college if present
 
         setLoading(false);
       } catch (error) {
@@ -109,7 +125,13 @@ const EditPoll: React.FC = () => {
   };
 
   const handleVisibilityChange = (event: SelectChangeEvent) => {
-    setIsPublic(event.target.value === "public");
+    const value = event.target.value;
+    setIsPublic(value === "public");
+    if (value === "public") setCollege("");
+  };
+
+  const handleCollegeChange = (event: SelectChangeEvent) => {
+    setCollege(event.target.value as string);
   };
 
   const addCandidate = () => {
@@ -176,6 +198,11 @@ const EditPoll: React.FC = () => {
       return false;
     }
 
+    if (!isPublic && !college) {
+      setError("Please select a college for college specific polls");
+      return false;
+    }
+
     return true;
   };
 
@@ -208,6 +235,7 @@ const EditPoll: React.FC = () => {
         endDate: endDate?.toISOString(),
         pollType,
         isPublic,
+        college: isPublic ? "" : college,
         updatedAt: new Date().toISOString(),
       };
 
@@ -436,22 +464,41 @@ const EditPoll: React.FC = () => {
                     <FormControl fullWidth>
                       <InputLabel>Visibility</InputLabel>
                       <Select
-                        value={isPublic ? "public" : "private"}
+                        value={isPublic ? "public" : "college"}
                         label="Visibility"
                         onChange={handleVisibilityChange}
                       >
                         <MenuItem value="public">Public</MenuItem>
-                        <MenuItem value="private">
-                          Private (Invited Only)
-                        </MenuItem>
+                        <MenuItem value="college">College Specific</MenuItem>
                       </Select>
                       <FormHelperText>
                         {isPublic
                           ? "Anyone with the link can vote"
-                          : "Only specific users can access and vote"}
+                          : "Only users from the selected college can vote"}
                       </FormHelperText>
                     </FormControl>
                   </Grid>
+                  {!isPublic && (
+                    <Grid item xs={12} sm={6}>
+                      <FormControl fullWidth required>
+                        <InputLabel>Choose College</InputLabel>
+                        <Select
+                          value={college}
+                          label="Choose College"
+                          onChange={handleCollegeChange}
+                        >
+                          {Object.keys(colleges).map((collegeName) => (
+                            <MenuItem key={collegeName} value={collegeName}>
+                              {collegeName}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        <FormHelperText>
+                          Only users from this college can vote
+                        </FormHelperText>
+                      </FormControl>
+                    </Grid>
+                  )}
                 </Grid>
               </CardContent>
             </Card>
